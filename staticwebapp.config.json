@@ -1,0 +1,10 @@
+{
+  "routes": [
+    { "route": "/BioEmu",    "rewrite": "/BioEmu/index.html" },
+    { "route": "/EvoDiff",  "rewrite": "/EvoDiff/index.html" },
+    { "route": "/nvidiaNIM",  "rewrite": "/nvidiaNIM/index.html" },
+    { "route": "/TamGen",       "rewrite": "/TamGen/index.html" },
+    { "route": "/RetroChimera",       "rewrite": "/RetroChimera/index.html" }
+  ],
+  "navigationFallback": { "rewrite": "/index.html", "exclude": ["/assets/*", "/*.css", "/*.js"] }
+}

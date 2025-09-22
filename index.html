@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI-Assisted Protein Design Pipeline</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --fg:#e7eef8; --muted:#9fb0c6; --card:#0f141b; --border:#202a36; --shadow:0 14px 36px rgba(0,0,0,.45);
+      --wire:#ffffff; --wire-soft:#dfe6f3; --wire-w:3;
+      --amber-ink:#f3b24d; --amber-bg:#1f1708; --amber-grad:#2b1f0a;
+      --teal-ink:#63d1c8; --teal-bg:#0e2021; --teal-grad:#103031;
+      --violet-ink:#b18cff; --violet-bg:#15112a; --violet-grad:#1c1636;
+      --rose-ink:#ff8fb6; --rose-bg:#23111d; --rose-grad:#2c1523;
+      --sky-ink:#7fbaff; --sky-bg:#0d1a2a; --sky-grad:#0f2236;
+      --green-ink:#7ddc89; --green-bg:#0f2316; --green-grad:#12301f;
+      --slate-ink:#cfd6e3; --slate-bg:#151a22; --slate-grad:#1a202a;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial}
+    .wrap{position:relative;max-width:1200px;margin:0 auto;padding:28px 18px 100px}
+    header{display:flex;justify-content:center;align-items:center;margin:0 0 24px}
+    header h1{margin:0;text-align:center;font-size:28px;font-weight:900;letter-spacing:.3px}
+
+    /* grid */
+    .grid{position:relative;display:grid;gap:26px 26px;grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto auto auto auto auto auto auto auto}
+
+    /* positions */
+    #tamgen{grid-column:2;grid-row:1}
+    #msa{grid-column:1;grid-row:2}
+    #openfold{grid-column:1;grid-row:3}
+    #rfdiff{grid-column:1;grid-row:4}
+    #mpnn{grid-column:1;grid-row:5}
+    #evodiff{grid-column:3;grid-row:3}
+    #bioemu{grid-column:2;grid-row:6}
+    #retro{grid-column:2;grid-row:7}
+    #wetlab{grid-column:2;grid-row:8}
+
+    /* cards */
+    a.card{display:block;position:relative;padding:18px 18px 16px;border-radius:16px;background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow);min-height:98px;z-index:1;
+      text-decoration:none;color:inherit;transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease}
+    a.card:hover, a.card:focus-visible{transform:translateY(-2px);border-color:#3a4a62;outline:none}
+    .card h2{margin:0 0 8px;font-size:16px;font-weight:900}
+    .card p{margin:0;font-size:13px;color:var(--muted)}
+
+    .t-amber{background:linear-gradient(180deg,var(--amber-bg),var(--amber-grad))}
+    .t-teal{background:linear-gradient(180deg,var(--teal-bg),var(--teal-grad))}
+    .t-violet{background:linear-gradient(180deg,var(--violet-bg),var(--violet-grad))}
+    .t-rose{background:linear-gradient(180deg,var(--rose-bg),var(--rose-grad))}
+    .t-sky{background:linear-gradient(180deg,var(--sky-bg),var(--sky-grad))}
+    .t-green{background:linear-gradient(180deg,var(--green-bg),var(--green-grad))}
+    .t-slate{background:linear-gradient(180deg,var(--slate-bg),var(--slate-grad))}
+
+    .dot{position:absolute;left:14px;top:14px;width:10px;height:10px;border-radius:50%}
+    #tamgen .dot{background:var(--amber-ink)}
+    #msa .dot{background:var(--teal-ink)}
+    #openfold .dot,#rfdiff .dot,#mpnn .dot{background:var(--violet-ink)}
+    #evodiff .dot{background:var(--rose-ink)}
+    #bioemu .dot{background:var(--sky-ink)}
+    #retro .dot{background:var(--green-ink)}
+    #wetlab .dot{background:var(--slate-ink)}
+
+    .badge{position:absolute;top:12px;right:12px;font-size:11px;padding:4px 8px;border-radius:999px;color:#0d1117;background:rgba(255,255,255,.7)}
+
+    /* wires */
+    svg#wires{position:absolute;inset:0;pointer-events:none;z-index:0}
+    .flow{stroke:var(--wire-soft);stroke-width:var(--wire-w);fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;stroke-dasharray:8 8;filter:drop-shadow(0 0 6px rgba(255,255,255,.24));animation:move 2.2s linear infinite,blink 2.4s ease-in-out infinite}
+    @keyframes move{to{stroke-dashoffset:-32}}
+    @keyframes blink{0%{stroke-opacity:.5}50%{stroke-opacity:1}100%{stroke-opacity:.5}}
+
+    @media (max-width:1000px){
+      .grid{grid-template-columns:1fr}
+      #tamgen,#msa,#openfold,#rfdiff,#mpnn,#evodiff,#bioemu,#retro,#wetlab{grid-column:1}
+      #evodiff{grid-row:auto}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header><h1>AI-Assisted Protein Design Pipeline</h1></header>
+
+    <div class="grid" id="grid">
+      <!-- Source -->
+      <a class="card t-amber" id="tamgen" href="/apps/TamGen/">
+        <span class="dot"></span><span class="badge">Input</span>
+        <h2>TamGen</h2><p>Design & regulatory constraints (MoA, safety, length, IDR)</p>
+      </a>
+
+      <!-- Left branch (all link to nvidiaNIM) -->
+      <a class="card t-teal"   id="msa"      href="/apps/nvidiaNIM/">
+        <span class="dot"></span><span class="badge">Context</span>
+        <h2>MSA-search-NIM</h2><p>Evolutionary families, conservation signals</p>
+      </a>
+      <a class="card t-violet" id="openfold" href="/apps/nvidiaNIM/">
+        <span class="dot"></span><span class="badge">Structure</span>
+        <h2>OpenFold2-NIM</h2><p>Predict / define target 3D folds</p>
+      </a>
+      <a class="card t-violet" id="rfdiff"   href="/apps/nvidiaNIM/">
+        <span class="dot"></span><span class="badge">Backbone</span>
+        <h2>RFdiffusion</h2><p>Backbone generation to meet geometry/epitope</p>
+      </a>
+      <a class="card t-violet" id="mpnn"     href="/apps/nvidiaNIM/">
+        <span class="dot"></span><span class="badge">Sequence</span>
+        <h2>ProteinMPNN-NIM</h2><p>Fit amino-acid sequence to backbone</p>
+      </a>
+
+      <!-- Right branch -->
+      <a class="card t-rose"   id="evodiff"  href="/apps/EvoDiff/">
+        <span class="dot"></span><span class="badge">Sequence-first</span>
+        <h2>EvoDiff</h2><p>Direct sequence generation (unconditional, MSA-guided, motif scaffolding)</p>
+      </a>
+
+      <!-- Merge / downstream -->
+      <a class="card t-sky"    id="bioemu"   href="/apps/BioEmu/">
+        <span class="dot"></span><span class="badge">Screen</span>
+        <h2>BioEmu</h2><p>In-silico screening: folding, stability, binding, IDR filters</p>
+      </a>
+      <a class="card t-green"  id="retro"    href="/apps/RetroChimera/">
+        <span class="dot"></span><span class="badge">Plan</span>
+        <h2>RetroChimera</h2><p>Construct design & experiment planning</p>
+      </a>
+      <a class="card t-slate"  id="wetlab"   href="#">
+        <span class="dot"></span><span class="badge">Assay</span>
+        <h2>Wet lab</h2><p>Expression, binding assays, cellular tests</p>
+      </a>
+
+      <svg id="wires" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+  </div>
+
+  <script>
+    /* wire-drawing logic */
+    const links = [
+      {from:'tamgen', to:'msa', fromSide:'bottom', toSide:'top', cls:'flow'},
+      {from:'msa', to:'openfold', fromSide:'bottom', toSide:'top', cls:'flow'},
+      {from:'openfold', to:'rfdiff', fromSide:'bottom', toSide:'top', cls:'flow'},
+      {from:'rfdiff', to:'mpnn', fromSide:'bottom', toSide:'top', cls:'flow'},
+      {from:'mpnn', to:'bioemu', fromSide:'right', toSide:'left', cls:'flow'},
+      {from:'tamgen', to:'evodiff', fromSide:'right', toSide:'top', cls:'flow'},
+      {from:'evodiff', to:'bioemu', fromSide:'left', toSide:'right', cls:'flow'},
+      {from:'bioemu', to:'retro', fromSide:'bottom', toSide:'top', cls:'flow'},
+      {from:'retro', to:'wetlab', fromSide:'bottom', toSide:'top', cls:'flow'}
+    ];
+    const grid = document.getElementById('grid');
+    const svg = document.getElementById('wires');
+    const round = n => Math.round(n);
+    function anchor(el, side){
+      const r = el.getBoundingClientRect(), g = grid.getBoundingClientRect();
+      const x = r.left - g.left, y = r.top - g.top, w = r.width, h = r.height;
+      if(side==='top') return {x:round(x+w/2), y:round(y)};
+      if(side==='bottom') return {x:round(x+w/2), y:round(y+h)};
+      if(side==='left') return {x:round(x), y:round(y+h/2)};
+      if(side==='right') return {x:round(x+w), y:round(y+h/2)};
+      return {x:round(x+w/2), y:round(y+h/2)};
+    }
+    function orth(a,b,fromSide,toSide){
+      if (Math.abs(a.x-b.x)<=1 || Math.abs(a.y-b.y)<=1) return [a,b];
+      const midX = round((a.x+b.x)/2), midY = round((a.y+b.y)/2);
+      const startHoriz = (fromSide==='left' || fromSide==='right');
+      return startHoriz ? [a,{x:midX,y:a.y},{x:midX,y:b.y},b] : [a,{x:a.x,y:midY},{x:b.x,y:midY},b];
+    }
+    function toPath(pts){return pts.map((p,i)=>i?`L ${p.x},${p.y}`:`M ${p.x},${p.y}`).join(' ');}
+    function draw(){
+      const g = grid.getBoundingClientRect();
+      const w = Math.round(g.width), h = Math.round(g.height);
+      svg.setAttribute('width', w); svg.setAttribute('height', h); svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      svg.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      for(const link of links){
+        const fromEl = document.getElementById(link.from), toEl = document.getElementById(link.to);
+        if(!fromEl || !toEl) continue;
+        const a = anchor(fromEl, link.fromSide||'bottom'), b = anchor(toEl, link.toSide||'top');
+        const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+        p.setAttribute('d', toPath(orth(a,b,link.fromSide,link.toSide)));
+        p.setAttribute('class', link.cls);
+        frag.appendChild(p);
+      }
+      svg.appendChild(frag);
+    }
+    const queue = ()=>requestAnimationFrame(draw);
+    addEventListener('resize', queue, {passive:true});
+    addEventListener('scroll', queue, {passive:true});
+    addEventListener('DOMContentLoaded', draw);
+    addEventListener('load', queue);
+    const ro = new ResizeObserver(queue); ro.observe(grid); grid.querySelectorAll('.card').forEach(el=>ro.observe(el));
+    setTimeout(queue,150); setTimeout(queue,350); setTimeout(queue,800);
+  </script>
+</body>
+</html>

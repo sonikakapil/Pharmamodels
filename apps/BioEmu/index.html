@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BioEmu - Sequence → Diffusion → Equilibrium Ensemble</title>
+<style>
+  :root{
+    --bg:#070913; --bg2:#0e1330; --ink:#f6f7ff; --muted:#c6c9de;
+    --violet:#9b89ff; --aqua:#22e1ff; --pink:#ff9ecd; --amber:#ffd166;
+    --border:rgba(255,255,255,.14); --shadow:0 20px 50px rgba(0,0,0,.45); --radius:18px;
+    --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+    --sans: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Noto Sans","Helvetica Neue",Arial;
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{
+    margin:0; color:var(--ink); font-family:var(--sans);
+    background:
+      radial-gradient(1200px 800px at 0% -10%, #2a1b68, transparent 60%),
+      radial-gradient(1200px 800px at 110% 10%, #0a3a64, transparent 50%),
+      linear-gradient(160deg, var(--bg2), var(--bg));
+  }
+  .frame{max-width:1100px; margin:40px auto; padding:0 20px}
+  .hero{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap}
+  h1{margin:0; font-size:30px; font-weight:900; letter-spacing:.2px;
+     background:linear-gradient(90deg, var(--aqua), var(--violet), var(--pink));
+     -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:0 0 20px rgba(155,137,255,.35)}
+  .sub{color:var(--muted); font-size:14px}
+  .controls{display:flex; gap:10px; flex-wrap:wrap}
+  button{
+    background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); color:var(--ink);
+    border:1px solid var(--border); padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer;
+    box-shadow:var(--shadow); backdrop-filter:blur(8px); transition:.2s transform,.25s filter,.25s box-shadow}
+  button:hover{filter:brightness(1.15); box-shadow:0 12px 24px rgba(155,137,255,.25)}
+  button:active{transform:translateY(1px)}
+  .pill{border-radius:999px; padding:8px 12px; background:rgba(255,255,255,.06); border:1px solid var(--border); color:var(--muted); font-size:12px}
+
+  .stage{position:relative; min-height:820px; padding:22px; border-radius:var(--radius); border:1px solid var(--border);
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); box-shadow:var(--shadow); overflow:hidden; backdrop-filter:blur(10px)}
+  .grid{position:absolute; inset:-20px; background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 80px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 80px);
+    mask-image: radial-gradient(1200px 600px at 70% 30%, #000 35%, transparent 70%); pointer-events:none}
+
+  .step{position:relative; display:none; animation:fadeIn .4s ease both; padding-bottom:110px}
+  .step.active{display:block}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+  .badge{display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.06); border:1px solid var(--border); padding:8px 12px; border-radius:999px; font-size:12px; color:var(--muted); backdrop-filter:blur(6px)}
+  .badge .dot{width:8px; height:8px; border-radius:50%; background:var(--aqua); box-shadow:0 0 12px var(--aqua)}
+  .stepContent{display:grid; grid-template-columns: 1.5fr 1fr; gap:18px; align-items:start; margin-top:14px}
+  .coach{background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:12px; padding:12px; backdrop-filter:blur(8px); font-size:13px; color:var(--muted); box-shadow:var(--shadow)}
+  .coach h4{margin:0 0 6px 0; font-size:14px; color:#fff} .coach ul{margin:6px 0 0 18px}
+  .hidden{display:none}
+  .card{background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:16px; padding:16px; backdrop-filter: blur(8px)}
+  .card h3{margin:0 0 6px 0; font-size:16px}
+  .meta{color:var(--muted); font-size:12px}
+  .legend{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
+  .chip{font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.06); backdrop-filter: blur(6px)}
+  .chip b{color:var(--ink)}
+  .blocks{display:grid; grid-template-columns:repeat(12,1fr); gap:6px; margin-top:18px}
+  .blk{height:26px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,.06)}
+  .blk.e{background:linear-gradient(90deg, rgba(34,225,255,.18), rgba(34,225,255,.05))}
+  .blk.s{background:linear-gradient(90deg, rgba(155,137,255,.20), rgba(155,137,255,.06))}
+  .blk.d{background:linear-gradient(90deg, rgba(255,158,205,.20), rgba(255,158,205,.06))}
+
+  .viz{height:300px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:rgba(0,0,0,.12); overflow:hidden; position:relative}
+  .viz canvas, .viz svg{position:absolute; inset:0; width:100%; height:100%}
+  .viz-title{font-size:13px; color:var(--muted); margin:8px 0 0 4px}
+
+  .glwrap{position:relative; height:460px; border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.15)}
+  #emu3d{position:absolute; inset:0; width:100%; height:100%; display:block}
+
+  .mini{display:flex; gap:8px; margin:8px 0 6px 0}
+
+  .captionbar{position:absolute; left:0; right:0; bottom:0; padding:12px 18px; background:rgba(7,9,19,.58);
+    border-top:1px solid rgba(255,255,255,.12); backdrop-filter: blur(8px); font-size:14px}
+  .progress{display:flex; gap:6px; align-items:center; justify-content:center; margin-top:14px}
+  .pdot{width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.08); border:1px solid var(--border)}
+  .pdot.active{background: radial-gradient(circle at 50% 40%, var(--aqua), var(--violet)); box-shadow:0 0 14px var(--aqua)}
+  .footer{margin-top:10px; color:var(--muted); font-size:12px}
+  .kbd{background:rgba(255,255,255,.07); border:1px solid var(--border); border-bottom-width:2px; padding:2px 6px; border-radius:6px; font-weight:800}
+
+  @media (max-width:980px){ .stepContent{grid-template-columns:1fr} }
+</style>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="frame">
+  <div class="hero">
+    <div>
+      <h1>BioEmu - Sequence → Diffusion → Equilibrium Ensemble</h1>
+      <div class="sub">Live visuals for Steps 1–4 and interactive 3D in Step 5</div>
+    </div>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="pause">⏸ Pause</button>
+      <button id="prev">⟵ Prev</button>
+      <button id="next">Next ⟶</button>
+      <button id="reset">↺ Reset</button>
+      <span class="pill" id="explain">💬 Explain: ON</span>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="grid"></div>
+
+    <!-- STEP 1 -->
+    <section class="step active" id="step1" aria-label="Step 1">
+      <span class="badge"><span class="dot"></span> Step 1 — Why ensembles (visual)</span>
+      <div class="stepContent">
+        <div>
+          <div class="viz" id="viz1"><canvas></canvas></div>
+          <div class="viz-title">Multiple conformers “breathe” → function comes from motion</div>
+          <div class="card" style="margin-top:12px">
+            <h3>Proteins move</h3>
+            <p>We want an <b>equilibrium ensemble</b> (states + populations), not a single static pose.</p>
+            <div class="legend">
+              <span class="chip"><b>One</b> structure ≠ function</span>
+              <span class="chip"><b>Ensemble</b> = states + probabilities</span>
+            </div>
+            <!-- NEW: live pose populations + single-pose toggle -->
+          <div class="legend" id="s1pop">
+            <span class="chip" id="chipA">Pose A ≈ <b>—</b></span>
+            <span class="chip" id="chipB">Pose B ≈ <b>—</b></span>
+            <span class="chip" id="chipC">Pose C ≈ <b>—</b></span>
+            <span class="chip" id="s1toggle">Single pose (S)</span>
+          </div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Takeaway</h4>
+          <ul>
+            <li>BioEmu aims to emulate the ensemble directly.</li>
+            <li>The canvas shows many plausible backbones “breathing.”</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section class="step" id="step2" aria-label="Step 2">
+      <span class="badge"><span class="dot"></span> Step 2 — Model at a glance (visual)</span>
+      <div class="stepContent">
+        <div>
+          <div class="viz" id="viz2">
+            <svg viewBox="0 0 900 300" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#22e1ff" stop-opacity=".25"/><stop offset="1" stop-color="#9b89ff" stop-opacity=".08"/>
+                </linearGradient>
+                <linearGradient id="g2" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#ff9ecd" stop-opacity=".25"/><stop offset="1" stop-color="#ff9ecd" stop-opacity=".08"/>
+                </linearGradient>
+                <linearGradient id="g3" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#9b89ff" stop-opacity=".25"/><stop offset="1" stop-color="#9b89ff" stop-opacity=".08"/>
+                </linearGradient>
+                <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                  <polygon points="0,0 8,4 0,8" fill="#c6c9de"/>
+                </marker>
+              </defs>
+              <rect x="40" y="70" width="200" height="160" rx="14" fill="url(#g1)" stroke="rgba(255,255,255,.28)"/>
+              <text x="140" y="120" fill="#fff" text-anchor="middle" font-size="16" font-weight="700">Encoder</text>
+              <text x="140" y="145" fill="#c6c9de" text-anchor="middle" font-size="12">Evoformer (AF2-style)</text>
+
+              <rect x="320" y="70" width="220" height="160" rx="14" fill="url(#g2)" stroke="rgba(255,255,255,.28)"/>
+              <text x="430" y="120" fill="#fff" text-anchor="middle" font-size="16" font-weight="700">Score model</text>
+              <text x="430" y="145" fill="#c6c9de" text-anchor="middle" font-size="12">Invariant Point Attention</text>
+
+              <rect x="620" y="70" width="240" height="160" rx="14" fill="url(#g3)" stroke="rgba(255,255,255,.28)"/>
+              <text x="740" y="120" fill="#fff" text-anchor="middle" font-size="16" font-weight="700">SDE Integrator</text>
+              <text x="740" y="145" fill="#c6c9de" text-anchor="middle" font-size="12">Denoise → structure</text>
+
+              <line id="flow12" x1="240" y1="150" x2="320" y2="150" stroke="#c6c9de" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 6"/>
+              <line id="flow23" x1="540" y1="150" x2="620" y2="150" stroke="#c6c9de" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 6"/>
+            </svg>
+          </div>
+          <div class="legend">
+            <span class="chip"><b>Inputs</b>: sequence / MSA → single+pair reps</span>
+            <span class="chip"><b>Score</b>: gradients toward equilibrium</span>
+            <span class="chip"><b>Integrator</b>: repeated nudges in 3D</span>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Pipeline</h4>
+          <ul>
+            <li>Encoder learns geometry-aware features.</li>
+            <li>Score network tells which way to denoise.</li>
+            <li>Integrator turns scores into coordinates.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section class="step" id="step3" aria-label="Step 3">
+      <span class="badge"><span class="dot"></span> Step 3 — Diffusion sampling (visual)</span>
+      <div class="stepContent">
+        <div>
+          <div class="viz" id="viz3"><canvas></canvas></div>
+          <div class="viz-title">Particles start noisy and flow toward a backbone curve (x<sub>T</sub> → x<sub>0</sub>)</div>
+          <div class="card" style="margin-top:12px">
+            <h3>Noisy → denoised</h3>
+            <p>Each full run yields one independent conformation; repeating gives an ensemble.</p>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Tip</h4>
+          <ul>
+            <li>Watch the dots settle onto the curve—this mimics denoising steps.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 4 -->
+    <section class="step" id="step4" aria-label="Step 4">
+      <span class="badge"><span class="dot"></span> Step 4 — Training recipe (visual)</span>
+      <div class="stepContent">
+        <div>
+          <div class="viz" id="viz4"><canvas></canvas></div>
+          <div class="viz-title">Distributions: Pretrain (broad) → MD-tuned → Equilibrium-aligned</div>
+          <div class="legend">
+            <span class="chip"><b>AFDB</b> priors</span>
+            <span class="chip"><b>MD</b> dynamics</span>
+            <span class="chip"><b>ΔG</b> property alignment</span>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Why it works</h4>
+          <ul>
+            <li>Start broad → learn dynamics → match experiments.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 5 (3D) -->
+    <section class="step" id="step5" aria-label="Step 5">
+      <span class="badge"><span class="dot"></span> Step 5 — 3D ensemble (interactive)</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>Interactive viewer</h3>
+            <div class="mini">
+              <button id="sampleBtn">🎲 Sample ensemble</button>
+              <button id="denoiseBtn">✨ Animate denoise</button>
+              <button id="spinBtn">⟳ Toggle Spin</button>
+              <button id="snapBtn">📸 Snapshot</button>
+              <label class="pill">Conformers:
+                <input id="nConfs" type="range" min="3" max="18" value="9" />
+              </label>
+            </div>
+            <div class="glwrap"><canvas id="emu3d"></canvas></div>
+            <div class="meta">Translucent tubes = different conformers (illustrative).</div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Try this</h4>
+          <ul>
+            <li>Use <b>🎲 Sample</b> to regenerate an ensemble.</li>
+            <li>Use <b>✨ Denoise</b> to watch x<sub>T</sub> → x<sub>0</sub>.</li>
+          </ul>
+        </aside>
+      </div>
+      <div class="captionbar" id="caption" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <div class="progress" aria-label="progress">
+    <div class="pdot active" data-dot="1"></div>
+    <div class="pdot" data-dot="2"></div>
+    <div class="pdot" data-dot="3"></div>
+    <div class="pdot" data-dot="4"></div>
+    <div class="pdot" data-dot="5"></div>
+  </div>
+
+  <div class="footer">
+    Use <span class="kbd">Play</span> to auto-advance. All visuals are illustrative for explaining BioEmu concepts.
+  </div>
+</div>
+
+<!-- 3D viewer (three.js) -->
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  function plddtColor(t){
+    const L=(a,b,u)=>a+(b-a)*u; let r,g,b;
+    if(t<0.55){ const u=t/0.55; r=L(30,24,u); g=L(144,209,u); b=L(255,118,u); }
+    else{ const u=(t-0.55)/0.45; r=L(24,255,u); g=L(209,209,u); b=L(118,102,u); }
+    return new THREE.Color(r/255,g/255,b/255);
+  }
+  function makeCurve(N, amp, seed){
+    let s = seed>>>0; const rnd = ()=> (s = (1664525*s + 1013904223)>>>0, (s&0xffffff)/0x1000000);
+    const pts=[];
+    for(let i=0;i<N;i++){
+      const t=i/(N-1);
+      const base = new THREE.Vector3((t-0.5)*6.0, Math.sin(t*Math.PI*1.4)*1.7, Math.cos(t*Math.PI*1.8)*0.9);
+      const n = (u)=> { const f1=Math.sin(6*u + rnd()*6), f2=Math.sin(12*u + rnd()*6), f3=Math.sin(24*u + rnd()*6); return (0.6*f1+0.3*f2+0.1*f3); };
+      const wobble = new THREE.Vector3(n(t+0.1), n(t+0.4), n(t+0.7)).multiplyScalar(amp);
+      pts.push(base.add(wobble));
+    }
+    return new THREE.CatmullRomCurve3(pts);
+  }
+  function buildTube(curve, r=0.08){
+    const g = new THREE.TubeGeometry(curve, 320, r, 12, false);
+    const count=g.attributes.position.count, uv=g.attributes.uv;
+    const col=new THREE.BufferAttribute(new Float32Array(count*3),3);
+    for(let i=0;i<count;i++){ const frac=uv?uv.getY(i):(i/(count-1)); const c=plddtColor(frac); col.setXYZ(i,c.r,c.g,c.b); }
+    g.setAttribute('color',col);
+    return new THREE.Mesh(g, new THREE.MeshPhongMaterial({vertexColors:true, shininess:40, specular:0x335577, transparent:true, opacity:0.55}));
+  }
+
+  window.createBioEmuViewer = function({canvasId}){
+    const canvas=document.getElementById(canvasId);
+    const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    const scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x070913,0.02);
+    const camera=new THREE.PerspectiveCamera(40,1,0.1,100); camera.position.set(3.6,2.4,6.5);
+    const ctrls=new OrbitControls(camera, renderer.domElement); ctrls.enableDamping=true; ctrls.dampingFactor=.06; ctrls.minDistance=1.8; ctrls.maxDistance=12;
+    scene.add(new THREE.AmbientLight(0xffffff,.5)); const key=new THREE.DirectionalLight(0xffffff,1.1); key.position.set(3,4,2); scene.add(key);
+    const rim=new THREE.DirectionalLight(0x88ccff,.5); rim.position.set(-3,-2,-4); scene.add(rim);
+    const group=new THREE.Group(); scene.add(group);
+
+    function resize(){ const p=renderer.domElement.parentElement; const r=p.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); camera.aspect=r.width/r.height; camera.updateProjectionMatrix(); }
+    window.addEventListener('resize',resize,{passive:true}); resize(); setTimeout(resize,50);
+
+    let spin=true, a=0, ens=[], N=30;
+    function sample(n=9, seedBase=Math.floor(Math.random()*1e9)){
+      while(group.children.length){ group.remove(group.children[0]); }
+      ens=[];
+      for(let k=0;k<n;k++){ const c=makeCurve(N,0.55,seedBase+k*9973); const t=buildTube(c,0.07); t.material.opacity=0.35+0.6*(k/(n-1)); group.add(t); ens.push({c,t}); }
+    }
+    let dT=0, denoise=false, dSeed=42;
+    function startDenoise(){ dSeed=Math.floor(Math.random()*1e9); dT=0; denoise=true; }
+
+    (function animate(){
+      requestAnimationFrame(animate);
+      if(spin){ a+=0.005; group.rotation.y=a; }
+      if(denoise && ens[0]){
+        dT=Math.min(1,dT+0.006); const amp=1.2*(1-dT)+0.15*dT;
+        group.remove(ens[0].t); const c=makeCurve(N,amp,dSeed); const t=buildTube(c,0.10); t.material.opacity=0.85; group.add(t); ens[0]={c,t};
+        if(dT>=1) denoise=false;
+      }
+      ctrls.update(); renderer.render(scene,camera);
+    })();
+
+    return { sample, denoise:startDenoise, toggleSpin:()=>{spin=!spin}, snapshot:()=>{
+      const prev=scene.background; scene.background=new THREE.Color(0x070913); renderer.render(scene,camera);
+      const a=document.createElement('a'); a.href=renderer.domElement.toDataURL('image/png'); a.download='bioemu_ensemble_demo.png'; a.click(); scene.background=prev;
+    }, reset:()=>{ ctrls.reset(); group.rotation.set(0,0,0); a=0; } };
+  };
+</script>
+
+<!-- Step logic + 2D visuals (incl. Step 4 redesign) -->
+<script>
+  const steps=["step1","step2","step3","step4","step5"]; let idx=0, playing=false, timers=[];
+  let explainOn=true, viewerReady=false; const dots=[...document.querySelectorAll('[data-dot]')];
+  const CAPTION={
+    step1:"Why ensembles: many conformers sampled at equilibrium.",
+    step2:"BioEmu architecture: Encoder → Score model → SDE integrator.",
+    step3:"Diffusion: noisy particles flow onto a backbone curve (x_T → x_0).",
+    step4:"Training: pretrain on AFDB → finetune with MD → property alignment (ΔG).",
+    step5:"Interactive 3D: sample several conformers; animate a denoise trajectory."
+  };
+  function setExplain(on){ explainOn=on; document.getElementById('explain').textContent=on?"💬 Explain: ON":"💬 Explain: OFF"; document.querySelectorAll('.coach').forEach(el=>el.classList.toggle('hidden',!on)); }
+
+  function showStep(i){
+    timers.forEach(t=>clearTimeout(t)); timers=[];
+    document.querySelectorAll('.step').forEach(el=>el.classList.remove('active'));
+    document.getElementById(steps[i]).classList.add('active');
+    dots.forEach((d,k)=>d.classList.toggle('active',k===i));
+    const cap=document.getElementById('caption'); if(cap) cap.innerHTML=CAPTION[steps[i]];
+
+    if(i===0) startViz1(); else stopViz1();
+    if(i===2) startViz3(); else stopViz3();
+    if(i===3) startViz4(); else stopViz4();   /* Step 4 runs only when visible */
+    if(i===4) initViewer();
+
+    if(playing){
+      const wait=(i===0?2500:i===1?2200:i===2?2600:i===3?2600:999999);
+      if(i<steps.length-1) timers.push(setTimeout(()=>{ idx++; showStep(idx); },wait));
+    }
+    setExplain(explainOn);
+  }
+
+  document.getElementById('play').onclick=()=>{ if(!playing){ playing=true; showStep(idx); } };
+  document.getElementById('pause').onclick=()=>{ playing=false; timers.forEach(t=>clearTimeout(t)); timers=[]; };
+  document.getElementById('next').onclick=()=>{ playing=false; idx=Math.min(idx+1, steps.length-1); showStep(idx); };
+  document.getElementById('prev').onclick=()=>{ playing=false; idx=Math.max(idx-1, 0); showStep(idx); };
+  document.getElementById('reset').onclick=()=>{ playing=false; idx=0; showStep(idx); if(window._emu) window._emu.reset(); };
+  document.getElementById('explain').onclick=()=> setExplain(!explainOn);
+
+/* ---------- Step 1 visual (many conformers + density + populations) ---------- */
+let v1RAF=null, v1Ctx=null, v1W=0, v1H=0, v1T=0, v1Resize=null;
+let s1Single=false;                   // press 'S' to toggle single-photo view
+const chipA=document.getElementById('chipA');
+const chipB=document.getElementById('chipB');
+const chipC=document.getElementById('chipC');
+
+  function startViz1(){
+    if(v1RAF) return;
+    const wrap=document.querySelector('#viz1'); const canvas=wrap.querySelector('canvas'); v1Ctx=canvas.getContext('2d');
+    v1Resize=()=>{ const r=wrap.getBoundingClientRect(); const d=window.devicePixelRatio||1; canvas.width=v1W=Math.max(1,Math.floor(r.width*d)); canvas.height=v1H=Math.max(1,Math.floor(r.height*d)); };
+    v1Resize(); let last=performance.now();
+
+    function curvePoint(t, phase, k, cx, cy, scale){
+      const x=cx + (t-0.5)*2.8*scale + Math.sin(phase+6*t)*0.08*scale*k/12;
+      const y=cy + Math.sin(t*Math.PI*1.4 + 0.5*Math.cos(phase))*0.7*scale
+                 + Math.cos(t*Math.PI*1.8+phase*0.7)*0.35*scale*k/12;
+      return [x,y];
+    }
+
+    // smooth running estimate of populations
+    let emaA=4, emaB=5, emaC=3;
+
+    function draw(){
+      v1RAF=requestAnimationFrame(draw);
+      const now=performance.now(), dt=(now-last)/1000; last=now; v1T+=dt;
+
+      v1Ctx.clearRect(0,0,v1W,v1H);
+      v1Ctx.fillStyle="rgba(10,11,22,0.35)";
+      v1Ctx.fillRect(0,0,v1W,v1H);
+
+      const N=28, cx=v1W/2, cy=v1H/2, scale=Math.min(v1W,v1H)/4.2;
+
+      // ---- density glow (lighter composition makes overlaps brighter)
+      v1Ctx.save();
+      v1Ctx.globalCompositeOperation = 'lighter';
+
+      const K=12;
+      for(let k=0;k<K;k++){
+        // if single-photo mode, only draw the median conformer
+        if(s1Single && k!==Math.floor(K/2)) continue;
+
+        const phase = v1T*0.6 + k*0.4;
+        v1Ctx.beginPath();
+        for(let i=0;i<N;i++){
+          const t=i/(N-1);
+          const [x,y] = curvePoint(t, phase, k, cx, cy, scale);
+          if(i===0) v1Ctx.moveTo(x,y); else v1Ctx.lineTo(x,y);
+        }
+        v1Ctx.lineWidth = s1Single ?  3.2 : 2.6;
+        const alpha = s1Single ? 0.95 : (0.18 + 0.45*k/K);
+        v1Ctx.strokeStyle = `rgba(155,137,255,${alpha})`;
+        v1Ctx.shadowBlur = s1Single ? 0 : 18;
+        v1Ctx.shadowColor = 'rgba(155,137,255,.28)';
+        v1Ctx.stroke();
+      }
+      v1Ctx.restore();
+
+      // ---- live populations (very simple 3-bin classifier at t=0.65)
+      let cA=0,cB=0,cC=0;
+      const tMid=0.65;
+      for(let k=0;k<K;k++){
+        const phase = v1T*0.6 + k*0.4;
+        const [,y] = curvePoint(tMid, phase, k, cx, cy, scale);
+        const dy = (y - cy) / scale;                // normalized deviation
+        if(dy < -0.05) cA++; else if(dy > 0.05) cC++; else cB++;
+      }
+      // exponential moving average to steady the readout
+      emaA = emaA*0.9 + cA*0.1; emaB = emaB*0.9 + cB*0.1; emaC = emaC*0.9 + cC*0.1;
+      const tot = emaA+emaB+emaC || 1;
+      const pA = Math.round(100*emaA/tot), pB=Math.round(100*emaB/tot), pC=Math.round(100*emaC/tot);
+      if(chipA){ chipA.innerHTML = `Pose A ≈ <b>${pA}%</b>`; }
+      if(chipB){ chipB.innerHTML = `Pose B ≈ <b>${pB}%</b>`; }
+      if(chipC){ chipC.innerHTML = `Pose C ≈ <b>${pC}%</b>`; }
+    }
+    draw();
+    window.addEventListener('resize', v1Resize, {passive:true});
+  }
+
+  // keyboard toggle: press “S” to switch single vs ensemble view
+  window.addEventListener('keydown', (e)=>{ if(e.key.toLowerCase()==='s'){ s1Single=!s1Single; } }, {passive:true});
+  document.getElementById('s1toggle')?.addEventListener('click', ()=>{ s1Single = !s1Single; });
+
+
+  function stopViz1(){ if(v1RAF){ cancelAnimationFrame(v1RAF); v1RAF=null; window.removeEventListener('resize', v1Resize);} }
+
+
+  /* ---------- Step 2 SVG dashed-line pulse ---------- */
+  (function pulseStep2(){
+    const s=document.getElementById('viz2');
+    const animate=()=>{ const l1=s.querySelector('#flow12'), l2=s.querySelector('#flow23'); let off=0;
+      function tick(){ off=(off+1)%12; l1.style.strokeDashoffset=String(off); l2.style.strokeDashoffset=String(off); requestAnimationFrame(tick); }
+      tick();
+    };
+    if(s) animate();
+  })();
+
+  /* ---------- Step 3 visual (diffusion) ---------- */
+  let v3RAF=null, v3Ctx=null, pts=null, v3W=0, v3H=0, t3=0, v3Resize=null;
+  function startViz3(){
+    if(v3RAF) return;
+    const wrap=document.querySelector('#viz3'); const canvas=wrap.querySelector('canvas'); v3Ctx=canvas.getContext('2d');
+    v3Resize=()=>{ const r=wrap.getBoundingClientRect(); const d=window.devicePixelRatio||1; canvas.width=v3W=Math.max(1,Math.floor(r.width*d)); canvas.height=v3H=Math.max(1,Math.floor(r.height*d)); };
+    v3Resize();
+    const M=220; pts=[];
+    for(let i=0;i<M;i++){ pts.push({x:Math.random()*v3W, y:Math.random()*v3H, vx:0, vy:0}); }
+    function backbone(t){ const x=(t-0.5)*0.8*v3W + v3W/2, y=v3H/2 + Math.sin(t*Math.PI*1.6)*0.28*v3H; return {x,y}; }
+    function draw(){
+      v3RAF=requestAnimationFrame(draw); t3+=0.016;
+      v3Ctx.fillStyle="rgba(7,9,19,0.4)"; v3Ctx.fillRect(0,0,v3W,v3H);
+      v3Ctx.beginPath();
+      for(let i=0;i<=200;i++){ const u=i/200; const p=backbone(u); if(i===0)v3Ctx.moveTo(p.x,p.y); else v3Ctx.lineTo(p.x,p.y); }
+      v3Ctx.lineWidth=3; v3Ctx.strokeStyle="rgba(34,225,255,0.5)"; v3Ctx.stroke();
+      pts.forEach((p,idx)=>{
+        const u = (Math.sin((idx*13.37 + t3*0.7)) + 1)/2;
+        const target=backbone(u);
+        p.vx += (target.x - p.x)*0.004; p.vy += (target.y - p.y)*0.004;
+        p.vx*=0.96; p.vy*=0.96; p.x+=p.vx; p.y+=p.vy;
+        v3Ctx.beginPath(); v3Ctx.arc(p.x,p.y,2,0,Math.PI*2); v3Ctx.fillStyle="rgba(255,158,205,0.9)"; v3Ctx.fill();
+      });
+    }
+    draw();
+    window.addEventListener('resize', v3Resize, {passive:true});
+  }
+  function stopViz3(){ if(v3RAF){ cancelAnimationFrame(v3RAF); v3RAF=null; window.removeEventListener('resize', v3Resize);} }
+
+  /* ---------- Step 4 visual (redesigned to match screenshot) ---------- */
+  let v4RAF=null, v4Ctx=null, v4Canvas=null, v4Resize=null, v4Running=false, v4T=0;
+  function startViz4(){
+    if(v4Running) return; v4Running=true;
+    const wrap=document.querySelector('#viz4');
+    v4Canvas = wrap.querySelector('canvas');
+    v4Ctx = v4Canvas.getContext('2d');
+
+    v4Resize = ()=>{
+      const r=wrap.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      v4Canvas.width  = Math.max(1, Math.floor(r.width  * dpr));
+      v4Canvas.height = Math.max(1, Math.floor(r.height * dpr));
+    };
+    v4Resize();
+    window.addEventListener('resize', v4Resize, {passive:true});
+
+    function roundRect(ctx,x,y,w,h,r){
+      ctx.beginPath();
+      ctx.moveTo(x+r,y);
+      ctx.arcTo(x+w,y,x+w,y+h,r);
+      ctx.arcTo(x+w,y+h,x,y+h,r);
+      ctx.arcTo(x,y+h,x,y,r);
+      ctx.arcTo(x,y,x+w,y,r);
+      ctx.closePath();
+    }
+
+    function draw(){
+      v4RAF=requestAnimationFrame(draw); v4T+=0.016;
+      const W=v4Canvas.width, H=v4Canvas.height, ctx=v4Ctx;
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle="rgba(7,9,19,0.35)"; ctx.fillRect(0,0,W,H);
+
+      // Panel
+      const pad=22, R=16;
+      const PX=pad, PY=pad, PW=W-2*pad, PH=H-2*pad;
+      ctx.lineWidth=1.5; ctx.strokeStyle="rgba(255,255,255,0.12)";
+      roundRect(ctx,PX,PY,PW,PH,R); ctx.stroke();
+
+      // Split into left/right plotting regions
+      const gutter=26;
+      const LW=(PW-gutter)/2, RW=LW;
+      const LX=PX+14, LY=PY+14, LH=PH-28;
+      const RX=LX+LW+gutter, RY=LY, RH=LH;
+
+      // Helpers to map (0..1, 0..1) -> pixels (left)
+      const LmapX = u => LX + u*(LW-28);
+      const LmapY = v => (LY+LH-14) - v*(LH-28);
+      const RmapX = u => RX + u*(RW-28);
+      const RmapY = v => (RY+RH-14) - v*(RH-28);
+
+      // Faint axes
+      ctx.strokeStyle="rgba(255,255,255,0.10)"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(LX, LY+LH-14); ctx.lineTo(LX+LW-14, LY+LH-14); ctx.moveTo(LX+14, LY); ctx.lineTo(LX+14, LY+LH-14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(RX, RY+RH-14); ctx.lineTo(RX+RW-14, RY+RH-14); ctx.moveTo(RX+14, RY); ctx.lineTo(RX+14, RY+RH-14); ctx.stroke();
+
+      // Colors
+      const C1="rgba(34,225,255,0.9)";
+      const C2="rgba(155,137,255,0.9)";
+      const C3="rgba(255,158,205,0.95)";
+
+      // --- LEFT: rising CDF-like curves (animated shift) ---
+      const phase = Math.sin(v4T*0.6)*0.04;
+      const cdfs = [
+        {k:10, x0:0.32+phase, col:C1},
+        {k:11, x0:0.46,       col:C2},
+        {k:13, x0:0.60-phase, col:C3},
+      ];
+      ctx.lineWidth=2;
+      cdfs.forEach(({k,x0,col})=>{
+        ctx.beginPath();
+        for(let i=0;i<=420;i++){
+          const u=i/420;
+          const y = 1/(1+Math.exp(-k*(u-x0))); // logistic CDF
+          const xpx=LmapX(u), ypx=LmapY(y);
+          if(i===0) ctx.moveTo(xpx, ypx); else ctx.lineTo(xpx, ypx);
+        }
+        ctx.strokeStyle=col; ctx.stroke();
+      });
+
+      // --- RIGHT: exponential decays (animated slight slope change) ---
+      const decays = [
+        {k:2.2-0.1*phase, col:C1},
+        {k:2.6,            col:C2},
+        {k:3.1+0.1*phase,  col:C3},
+      ];
+      decays.forEach(({k,col})=>{
+        ctx.beginPath();
+        for(let i=0;i<=420;i++){
+          const u=i/420;           // 0..1
+          let y = Math.exp(-k*u);  // decay
+          // normalize so y in [0,1] and not flat at 0
+          y = (y- Math.exp(-k)) / (1- Math.exp(-k));
+          const xpx=RmapX(u), ypx=RmapY(Math.max(0,Math.min(1,y)));
+          if(i===0) ctx.moveTo(xpx, ypx); else ctx.lineTo(xpx, ypx);
+        }
+        ctx.strokeStyle=col; ctx.stroke();
+      });
+    }
+    draw();
+  }
+  function stopViz4(){
+    if(!v4Running) return;
+    v4Running=false;
+    if(v4RAF) cancelAnimationFrame(v4RAF); v4RAF=null;
+    window.removeEventListener('resize', v4Resize);
+  }
+
+  /* ---------- Step 5 viewer wiring ---------- */
+  function initViewer(){
+    if(viewerReady) return; viewerReady=true;
+    window._emu = window.createBioEmuViewer({canvasId:'emu3d'});
+    window._emu.sample(parseInt(document.getElementById('nConfs').value,10));
+  }
+  document.getElementById('sampleBtn').onclick=()=>{ initViewer(); window._emu.sample(parseInt(document.getElementById('nConfs').value,10)); };
+  document.getElementById('denoiseBtn').onclick=()=>{ initViewer(); window._emu.denoise(); };
+  document.getElementById('spinBtn').onclick=()=>{ initViewer(); window._emu.toggleSpin(); };
+  document.getElementById('snapBtn').onclick=()=>{ initViewer(); window._emu.snapshot(); };
+  document.getElementById('nConfs').oninput=(e)=>{ initViewer(); window._emu.sample(parseInt(e.target.value,10)); };
+
+  // start
+  showStep(idx);
+</script>
+</body>
+</html>

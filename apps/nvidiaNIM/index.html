@@ -1,0 +1,2173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MSA-search-NIM → OpenFold2-NIM → RFdiffusion → ProteinMPNN-NIM (Multi-step)</title>
+<style>
+  :root{
+    --bg:#0a0716; --bg2:#140e2d; --ink:#f7f8ff; --muted:#c4c7de;
+    --violet:#9b89ff; --aqua:#22e1ff; --pink:#ff9ecd; --amber:#ffd166;
+    --border:rgba(255,255,255,.14); --shadow:0 20px 50px rgba(0,0,0,.45); --radius:18px;
+    --m1: rgba(155,137,255,.22); --m2: rgba(34,225,255,.22); --m3: rgba(255,158,205,.22);
+    --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+    --sans: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Noto Sans","Helvetica Neue",Arial;
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{
+    margin:0; color:var(--ink); font-family:var(--sans);
+    background:
+      radial-gradient(1200px 800px at 10% -10%, #2a1b68, transparent 60%),
+      radial-gradient(1200px 800px at 110% 10%, #0a3a64, transparent 50%),
+      linear-gradient(160deg, var(--bg2), var(--bg));
+  }
+  .frame{max-width:1100px; margin:42px auto; padding:0 20px}
+  .hero{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap}
+  h1{margin:0; font-size:30px; font-weight:900; letter-spacing:.2px;
+     background:linear-gradient(90deg, var(--aqua), var(--violet), var(--pink));
+     -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:0 0 20px rgba(155,137,255,.35)}
+  .sub{color:var(--muted); font-size:14px}
+  .controls{display:flex; gap:10px; flex-wrap:wrap}
+  button{
+    background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); color:var(--ink);
+    border:1px solid var(--border); padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer;
+    box-shadow:var(--shadow); backdrop-filter:blur(8px); transition:.2s transform,.25s filter,.25s box-shadow}
+  button:hover{filter:brightness(1.15); box-shadow:0 12px 24px rgba(155,137,255,.25)}
+  button:active{transform:translateY(1px)}
+
+  .stage{position:relative; min-height:760px; padding:22px; border-radius:var(--radius); border:1px solid var(--border);
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); box-shadow:var(--shadow); overflow:hidden; backdrop-filter:blur(10px)}
+  .grid{position:absolute; inset:-20px; background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 80px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 80px);
+    mask-image: radial-gradient(1200px 600px at 70% 30%, #000 35%, transparent 70%); pointer-events:none}
+
+  .step{position:relative; display:none; animation:fadeIn .4s ease both; padding-bottom:110px}
+  .step.active{display:block}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+  .badge{display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.06); border:1px solid var(--border); padding:8px 12px; border-radius:999px; font-size:12px; color:var(--muted); backdrop-filter:blur(6px)}
+  .badge .dot{width:8px; height:8px; border-radius:50%; background:var(--aqua); box-shadow:0 0 12px var(--aqua)}
+
+  .stepContent{
+    display:grid;
+    grid-template-columns: minmax(0,1.5fr) minmax(260px,1fr);
+    gap:18px; align-items:start; margin-top:14px
+  }
+  .stepContent > *{ min-width:0 }
+
+  .coach{background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:12px; padding:12px; backdrop-filter:blur(8px); font-size:13px; color:var(--muted); box-shadow:var(--shadow); z-index:1}
+  .coach h4{margin:0 0 6px 0; font-size:14px; color:#fff}
+  .coach ul{margin:6px 0 0 18px}
+
+  body[data-explain="off"] .coach{ display:none !important; }
+
+  .hidden{display:none}
+  .seq-list{font-family:var(--mono); font-size:18px; line-height:1.55; margin-top:16px}
+  .seq-item{opacity:0; transform:translateY(6px)}
+  .seq-item.show{opacity:1; transform:none; transition:.34s ease}
+  .tip{margin-top:14px; color:var(--muted); font-size:12px}
+
+  .msa{font-family:var(--mono); font-size:20px; letter-spacing:.5px}
+  .msa .line{white-space:pre}
+  .m1{background:linear-gradient(180deg, var(--m1), rgba(155,137,255,.08)); border-radius:6px; padding:0 2px; box-shadow:0 0 0 1px rgba(155,137,255,.45) inset}
+  .m2{background:linear-gradient(180deg, var(--m2), rgba(34,225,255,.08)); border-radius:6px; padding:0 2px; box-shadow:0 0 0 1px rgba(34,225,255,.55) inset}
+  .m3{background:linear-gradient(180deg, var(--m3), rgba(255,158,205,.08)); border-radius:6px; padding:0 2px; box-shadow:0 0 0 1px rgba(255,158,205,.55) inset}
+  .var{color:#0a0716; background: linear-gradient(180deg, var(--amber), #ffb74d); border-radius:6px; padding:0 2px; font-weight:900}
+  .pulse{animation:pulse 1.2s ease infinite}
+  @keyframes pulse{0%,100%{filter:brightness(1)} 50%{filter:brightness(1.25)}}
+  .motif-legend{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px}
+  .chip{font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.06); backdrop-filter: blur(6px)}
+  .col-guides{position:absolute; inset:0; pointer-events:none}
+  .guide{position:absolute; top:10px; bottom:10px; width:2px; background:linear-gradient(180deg, transparent, rgba(255,255,255,.24), transparent)}
+  .scanner{position:absolute; left:0; top:0; bottom:0; width:0; border-left:2px dashed rgba(255,255,255,.5); box-shadow:120px 0 80px -60px rgba(155,137,255,.35) inset}
+  .scanner.animate{animation:scan 5.2s linear forwards}
+  @keyframes scan{from{left:-5%} to{left:100%}}
+
+  .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:12px}
+  .card{background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:16px; padding:16px; backdrop-filter: blur(8px); min-width:0}
+  .card h3{margin:0 0 6px 0; font-size:16px}
+  .meta{color:var(--muted); font-size:12px}
+
+  .blocks{display:grid; grid-template-columns:repeat(12,1fr); gap:6px; margin-top:18px}
+  .blk{height:26px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,.06)}
+  .blk.e{background:linear-gradient(90deg, rgba(34,225,255,.18), rgba(34,225,255,.05))}
+  .blk.s{background:linear-gradient(90deg, rgba(155,137,255,.20), rgba(155,137,255,.06))}
+  .legend{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
+
+  .glwrap, .glwrap canvas { position: relative; z-index: 0; }
+  .glwrap { height: 480px; width: 100%; position: relative; }
+  .glwrap canvas{
+  display:block;             /* no baseline gap */
+  width:100%; height:100%;   /* match wrapper */
+  }
+
+  .mini{display:flex; gap:8px; margin:8px 0 6px 0; flex-wrap:wrap}
+
+  .captionbar{
+    position:absolute; left:0; right:0; bottom:0;
+    padding:12px 18px; background:rgba(10,7,22,.65);
+    border-top:1px solid rgba(255,255,255,.12);
+    backdrop-filter: blur(8px);
+    font-size:14px; color:var(--ink);
+    z-index: 9999;
+    pointer-events:none;
+  }
+  /* ---------- INTRO OVERLAY (front page) ---------- */
+  .introOverlay{position:fixed; inset:0; z-index:99999; display:none;}
+  .introOverlay.show{ display:flex; align-items:flex-start; justify-content:center; overflow:auto; }
+  .introBG{
+  position:absolute; inset:0;
+  background:var(--bg);           /* solid */
+  backdrop-filter:none;           /* no glass blur */
+  }
+  .introWrap{ position:relative; width:100%; max-width:min(1400px, 96vw); margin:auto; padding:20px; }
+  .introCard{
+    background:linear-gradient(180deg, var(--bg2), var(--bg)); /* solid gradient */
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:16px; box-shadow:var(--shadow); overflow:hidden
+  }
+  .introHead{padding:20px 20px 8px; border-bottom:1px solid var(--border)}
+  .introTitle{margin:0; font-size:28px; font-weight:900; color:#fff; letter-spacing:.2px}
+  .introSub{
+  max-width: none !important;   /* remove the 70ch cap */
+  width: 100%;
+  }
+  .introHead p{ max-width: none !important; }
+  .introGrid{
+    display:grid;
+    /* left takes the rest, right is a tidy fixed column */
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap:16px;
+    padding:16px 20px 20px;
+  }
+  .introPanel{
+    background:#0f1028;                    /* solid */
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:12px; padding:14px
+  }
+  .goalBlock{
+    border:1px solid rgba(255,255,255,.12);
+    background:#0b0d22;                    /* solid */
+    border-radius:12px; padding:12px; line-height:1.55
+  }
+  .introFooter{
+    display:flex; gap:10px; align-items:center; justify-content:space-between;
+    padding:12px 16px;
+    border-top:1px solid rgba(255,255,255,.12);
+    background:var(--bg)                   /* solid */
+  }
+
+  .list{margin:8px 0 0 18px}
+  .accent{color:#fff}
+
+  .actions{display:grid; gap:8px}
+  .actions .primary{
+    background:linear-gradient(180deg, rgba(122,162,255,.32), rgba(122,162,255,.14));
+    border-color:rgba(122,162,255,.5)
+  }
+  .kbd{display:inline-block; padding:2px 6px; border:1px solid var(--border); border-bottom-width:2px; border-radius:6px; background:rgba(255,255,255,.06); font-weight:800}
+
+  .shortcuts{margin-top:8px; color:var(--muted); font-size:12px; line-height:1.6}
+  .stepLinks{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:10px}
+  .stepLink{padding:10px; border:1px solid var(--border); border-radius:10px; background:rgba(255,255,255,.05); cursor:pointer}
+  .stepLink:hover{filter:brightness(1.08)}
+
+  .pillRow{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+  .pill{font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.06)}
+
+  .introFooter{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:12px 16px; border-top:1px solid var(--border); background:rgba(10,7,22,.6)}
+  .leftBtns,.rightBtns{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .skipWrap{display:flex; gap:8px; align-items:center; color:var(--muted); font-size:12px}
+
+  @media (max-width:820px){
+    .introGrid{ grid-template-columns:1fr; }
+  }
+
+  /* Print only the intro nicely */
+  @media print{
+    body > *:not(.introOverlay){ display:none !important; }
+    .introOverlay{ display:block !important; position:static; }
+    .introBG{ display:none }
+    .introWrap{ margin:0; padding:0 }
+    .introFooter{ display:none }
+  }
+
+
+  .legendBox{position:absolute; right:12px; top:12px; background:rgba(10,7,22,.55);
+    border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:8px 10px; font-size:12px; backdrop-filter:blur(8px)}
+  .gradBar{width:160px; height:10px; border-radius:999px; background:linear-gradient(90deg, #1e90ff, #18d176, #ffd166); margin:6px 0}
+  .sw{width:10px; height:10px; border-radius:3px; display:inline-block}
+
+  .progress{display:flex; gap:6px; align-items:center; justify-content:center; margin-top:14px}
+  .pdot{width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.08); border:1px solid var(--border)}
+  .pdot.active{background: radial-gradient(circle at 50% 40%, var(--aqua), var(--violet)); box-shadow:0 0 14px var(--aqua)}
+  .footer{margin-top:10px; color:var(--muted); font-size:12px}
+  .kbd{background:rgba(255,255,255,.07); border:1px solid var(--border); border-bottom-width:2px; padding:2px 6px; border-radius:6px; font-weight:800}
+
+  /* --- Step 7: Goal & constraints UI --- */
+  .objWrap{display:grid;grid-template-columns:1.25fr 1fr;gap:18px}
+  .goalCard{position:relative;background:rgba(255,255,255,.06);border:1px solid var(--border);
+    border-radius:16px;padding:16px;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
+  .goalHead{display:flex;align-items:center;gap:10px;margin:2px 0 10px}
+  .goalIcon{width:28px;height:28px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%,var(--amber),var(--pink))}
+  .goalCard .subtle{color:var(--muted);font-size:12px}
+
+  .objectiveSVG{width:100%;height:220px;border-radius:12px;margin-top:10px;
+    background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.05));
+    border:1px solid var(--border)}
+
+  .introArt{
+  width:100%; height:180px; border-radius:12px; margin-top:6px;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.05));
+  border:1px solid var(--border)
+  }
+
+  .checklist{display:grid;gap:10px;margin-top:14px}
+  .checkrow{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;
+    padding:10px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.05)}
+  .checkrow b{color:#fff}
+  .dotIcon{width:18px;height:18px;border-radius:50%;
+    background:radial-gradient(circle,#22e1ff 0,#9b89ff 70%);box-shadow:0 0 10px rgba(34,225,255,.6)}
+  .small{color:var(--muted);font-size:12px;margin-top:2px}
+
+  .kpis{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .kpill{border:1px solid var(--border);background:rgba(255,255,255,.06);
+    border-radius:999px;padding:6px 10px;font-size:12px}
+  .kbar{height:6px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:6px}
+  .kbar>span{display:block;height:100%;background:linear-gradient(90deg,var(--aqua),var(--violet));width:72%}
+
+  .sideCard{background:rgba(255,255,255,.07);border:1px solid var(--border);
+    border-radius:12px;padding:16px;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
+  .sideCard h4{margin:0 0 8px 0;font-size:14px;color:#fff}
+  .sideCard ul{margin:6px 0 0 18px}
+
+  /* --- Step 8 UI polish --- */
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 10px}
+  .toolbar label{font-size:12px;color:var(--muted)}
+  .range{appearance:none;height:6px;border-radius:999px;background:rgba(255,255,255,.12);outline:none;width:220px}
+  .range::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;
+    background:linear-gradient(180deg,var(--aqua),var(--violet));border:none;box-shadow:0 0 10px rgba(34,225,255,.6)}
+  .progresswrap{flex:1;min-width:140px;height:8px;background:rgba(255,255,255,.10);
+    border:1px solid var(--border);border-radius:999px;overflow:hidden}
+  .progressfill{height:100%;width:0;background:linear-gradient(90deg,var(--aqua),var(--violet));}
+  .select{background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--ink);
+    border-radius:10px;padding:6px 10px;font-weight:700}
+  .legendSoft{font-size:12px;color:var(--muted);margin-top:6px}
+
+  @media (max-width:980px){ .stepContent{ grid-template-columns: 1fr; } }
+
+  /* ---- Step 9 polish ---- */
+  .candPanel{display:grid;gap:12px}
+  .candHead{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .candList{display:grid;gap:8px}
+  .cCard{display:flex;justify-content:space-between;gap:8px;align-items:center;
+    padding:10px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.06);cursor:pointer}
+  .cCard.active{outline:2px solid var(--aqua)}
+  .cName{font-weight:800}
+  .badges{display:flex;gap:8px;flex-wrap:wrap}
+  .badgeMini{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);
+    background:rgba(255,255,255,.05);color:var(--muted)}
+  .metrics{display:grid;gap:8px}
+  .mRow{display:grid;grid-template-columns:120px 1fr 46px;gap:10px;align-items:center}
+  .mRow .lab{font-size:12px;color:var(--muted)}
+  .mBar{height:8px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid var(--border);overflow:hidden}
+  .mFill{height:100%;width:0;background:linear-gradient(90deg,var(--aqua),var(--violet))}
+  .mVal{font-size:12px;color:#fff;text-align:right}
+  .select{background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--ink);
+    border-radius:10px;padding:6px 10px;font-weight:700}
+
+
+  /* ---- EXTRA styles for ProteinMPNN steps ---- */
+  .gridHeat{display:grid; gap:4px; background:rgba(255,255,255,.06); border:1px solid var(--border); padding:10px; border-radius:12px}
+  .aaRow{display:grid; gap:2px; align-items:center}
+  .cellsRow{display:grid; gap:2px; align-items:center}
+  .aaLbl{font:11px var(--mono); color:var(--muted); text-align:center}
+  .cell{height:14px; border-radius:3px}
+  .seqmono{font-family:var(--mono); font-size:14px; line-height:1.6}
+  .seqList{display:grid; gap:8px}
+  .seqItem{padding:10px; border:1px solid var(--border); border-radius:12px; background:rgba(0,0,0,.15); cursor:pointer}
+  .seqItem.active{outline:2px solid var(--aqua)}
+  .hl{background:linear-gradient(180deg, rgba(164,255,158,.35), rgba(164,255,158,.12)); border-radius:6px; padding:0 2px}
+  .empty11{display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px dashed var(--border); border-radius:12px; padding:12px; color:var(--muted)}
+
+  /* Put the Start button at the bottom of the right-hand intro panel */
+  .introPanel[aria-label="Start"]{
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* Make Start appear last and stick to the bottom */
+  .introPanel[aria-label="Start"] .actions{
+    order: 2;           /* comes after shortcuts */
+    margin-top: auto;   /* pushes it to the bottom */
+  }
+
+  /* Keep shortcuts above the button */
+  .introPanel[aria-label="Start"] .shortcuts{
+    order: 1;
+  }
+
+  /* (nice-to-have) make the primary button full-width */
+  .introPanel[aria-label="Start"] .actions .primary{
+    width:100%;
+  }
+
+/* Remove the right "Start" column on the intro overlay */
+  .introGrid{
+    grid-template-columns: 1fr !important;  /* collapse to a single column */
+  }
+
+  .introPanel[aria-label="Start"]{
+    display: none !important;               /* hide the right panel entirely */
+  }
+
+</style>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+} }
+</script>
+</head>
+<body data-explain="off">
+
+<!-- INTRO / FRONT PAGE OVERLAY (refactor) -->
+<div class="introOverlay" id="intro">
+  <div class="introBG" aria-hidden="true"></div>
+  <div class="introWrap">
+    <section class="introCard" role="dialog" aria-modal="true" aria-labelledby="introTitle">
+      <header class="introHead">
+        <h1 class="introTitle" id="introTitle">Designing a mini-protein binder for Alzheimer’s</h1>
+        <p class="introSub">
+          In Alzheimer’s, certain proteins (like amyloid-β) misfold. Instead of staying soluble, they clump into sticky plaques that jam brain cells - leading to memory loss and cognitive decline.<br>
+          Think of the amyloid plaque as a <b>lock</b>. We want to design a custom <b>key</b> - a mini-protein that fits and binds it.
+        </p>
+      </header>
+
+
+   <div class="introGrid">
+        <div class="introPanel" aria-label="Overview" style="display:grid; gap:12px;">
+          <!-- simple lock/key visual -->
+          <!-- mini 3D “molding” scene -->
+          <div class="glwrap introForge">
+            <div class="legendBox" style="z-index:2">
+              <div><span class="sw" style="background:#9aa3af"></span> Lock (amyloid patch)</div>
+              <div><span class="sw" style="background:linear-gradient(90deg,#1e90ff,#18d176,#ffd166)"></span> Key (mini-protein)</div>
+            </div>
+            <canvas id="forge"></canvas>
+          </div>
+          <div class="pillRow">
+            <button id="forgePlay" class="primary">▶ Play Molding</button>
+            <button id="forgeReplay">↺ Replay</button>
+            <span class="pill">Lock = amyloid patch</span>
+            <span class="pill">Key = candidate mini-protein</span>
+          </div>
+
+          <div class="goalBlock">
+            We’ll use <b>4 models</b> across <b>14 steps</b> to show how:
+            <ol style="margin-top:2px; padding-left:18px;">
+              <li><b>MSA + motif detection (NIM):</b> find conserved building blocks</li>
+              <li><b>OpenFold2-NIM:</b> fold motifs into a backbone</li>
+              <li><b>RFdiffusion:</b> sample shapes that hug the amyloid surface</li>
+              <li><b>ProteinMPNN-NIM:</b> design amino-acid sequences where needed</li>
+            </ol>
+          </div>
+
+        </div>
+
+        <aside class="introPanel" aria-label="Start">
+          <div class="actions">
+            <button id="introStart" class="primary" style="font-size:16px;padding:12px 16px;">🎬 Start</button>
+          </div>
+          <div class="shortcuts" style="margin-top:8px;">
+            <span class="kbd">Space</span> play/pause &nbsp; <span class="kbd">←</span>/<span class="kbd">→</span> step
+          </div>
+        </aside>
+      </div>
+
+      <footer class="introFooter">
+        <div class="leftBtns">
+          <button id="introStart1">🎬 Start</button>
+        </div>
+        <div class="rightBtns">
+          <label class="skipWrap"><input type="checkbox" id="skipIntro"> Skip this intro next time</label>
+        </div>
+      </footer>
+    </section>
+  </div>
+</div>
+
+
+
+<div class="frame">
+  <div class="hero">
+    <div>
+      <h1>MSA-search-NIM → OpenFold2-NIM → RFdiffusion → ProteinMPNN-NIM</h1>
+      <div class="sub">Input sequences → Alignment + NIM motifs → Model → Stylized 3D → Diffusion design (illustrative) → <b>Sequence design on fixed backbone</b></div>
+    </div>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="pause">⏸ Pause</button>
+      <button id="stepBack">⟵ Prev</button>
+      <button id="stepFwd">Next ⟶</button>
+      <button id="reset">↺ Reset</button>
+      <button id="explainToggle">💬 Explain Mode: ON</button>
+      <button id="motifTour">🎯 Auto Tour Motifs</button>
+      <button id="openIntro">🎬 Intro</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="grid"></div>
+
+    <!-- STEP 1 -->
+    <section class="step active" id="s1"
+      data-caption="We start with a few nearly identical FR1 fragments (input sequences).">
+      <span class="badge"><span class="dot"></span> Step 1 — Input framework sequences (FR1 fragments)</span>
+      <div class="stepContent">
+        <div>
+          <div class="seq-list" style="margin-top:18px">
+            <div class="seq-item" id="s1l1">1. EVQLVESGGGLVQPGGSLRLSCAASGFTF</div>
+            <div class="seq-item" id="s1l2">2. EVQLVESGGGLVKPGGSLRLSCAASGFTF</div>
+            <div class="seq-item" id="s1l3">3. EVQLVESGGGLVQPGGSLRLSCAASGFSF</div>
+            <div class="seq-item" id="s1l4">4. EVQLVESGGGLVRPGGSLRLSCAASGFTF</div>
+            <div class="seq-item" id="s1l5">5. EVQLVESGGGLVQPGGSLRLSCAASGYTF</div>
+          </div>
+          <div class="tip">These are simplified FR1 stretches from human heavy chains.</div>
+        </div>
+        <aside class="coach">
+          <h4>What’s happening?</h4>
+          <ul>
+            <li>We gather a few very similar antibody fragments.</li>
+            <li>Each letter is an amino acid — a bead on a string.</li>
+            <li>Next, we line them up to see what rarely changes.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section class="step" id="s2"
+      data-caption="Align them (MSA) to reveal conserved motifs and small variations.">
+      <span class="badge"><span class="dot"></span> Step 2 — Multiple Sequence Alignment (MSA)</span>
+      <div class="stepContent">
+        <div class="msa" style="position:relative; margin-top:16px" id="msa2">
+          <div class="line">
+            <span class="m1">EVQLVESGGGLV</span><span class="var pulse">Q</span><span class="m2">PGGSLRLSCAASG</span><span class="var pulse">F</span><span class="var pulse">T</span><span class="m3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1">EVQLVESGGGLV</span><span class="var pulse">K</span><span class="m2">PGGSLRLSCAASG</span><span class="var pulse">F</span><span class="var pulse">T</span><span class="m3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1">EVQLVESGGGLV</span><span class="var pulse">Q</span><span class="m2">PGGSLRLSCAASG</span><span class="var pulse">F</span><span class="var pulse">S</span><span class="m3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1">EVQLVESGGGLV</span><span class="var pulse">R</span><span class="m2">PGGSLRLSCAASG</span><span class="var pulse">F</span><span class="var pulse">T</span><span class="m3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1">EVQLVESGGGLV</span><span class="var pulse">Q</span><span class="m2">PGGSLRLSCAASG</span><span class="var pulse">Y</span><span class="var pulse">T</span><span class="m3">F</span>
+          </div>
+          <div class="col-guides" id="guides"></div>
+        </div>
+        <aside class="coach">
+          <h4>Why align them?</h4>
+          <ul>
+            <li>Stacking the sequences reveals <b>conserved motifs</b>.</li>
+            <li>Shaded spans ≈ parts that hardly change across antibodies.</li>
+            <li>Yellow letters show tolerated variation.</li>
+          </ul>
+        </aside>
+      </div>
+      <div class="motif-legend">
+        <span class="chip"><b>Motif 1</b>: EVQLVESGGGLV (1–12)</span>
+        <span class="chip"><b>Motif 2</b>: PGGSLRLSCAASG (14–26)</span>
+        <span class="chip"><b>Tail pattern</b>: [F/Y][T/S]F (27–29)</span>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section class="step" id="s3"
+      data-caption="NIM sweeps the alignment and detects the conserved motif patterns.">
+      <span class="badge"><span class="dot"></span> Step 3 — NIM scans for conserved motifs</span>
+      <div class="stepContent">
+        <div class="msa" style="position:relative; margin-top:16px">
+          <div class="line">
+            <span class="m1" data-motif="1">EVQLVESGGGLV</span><span class="var">Q</span><span class="m2" data-motif="2">PGGSLRLSCAASG</span><span class="var">F</span><span class="var">T</span><span class="m3" data-motif="3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1" data-motif="1">EVQLVESGGGLV</span><span class="var">K</span><span class="m2" data-motif="2">PGGSLRLSCAASG</span><span class="var">F</span><span class="var">T</span><span class="m3" data-motif="3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1" data-motif="1">EVQLVESGGGLV</span><span class="var">Q</span><span class="m2" data-motif="2">PGGSLRLSCAASG</span><span class="var">F</span><span class="var">S</span><span class="m3" data-motif="3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1" data-motif="1">EVQLVESGGGLV</span><span class="var">R</span><span class="m2" data-motif="2">PGGSLRLSCAASG</span><span class="var">F</span><span class="var">T</span><span class="m3" data-motif="3">F</span>
+          </div>
+          <div class="line">
+            <span class="m1" data-motif="1">EVQLVESGGGLV</span><span class="var">Q</span><span class="m2" data-motif="2">PGGSLRLSCAASG</span><span class="var">Y</span><span class="var">T</span><span class="m3" data-motif="3">F</span>
+          </div>
+          <div class="scanner" id="scanner"></div>
+        </div>
+        <aside class="coach">
+          <h4>What NIM does</h4>
+          <ul>
+            <li>It sweeps the alignment and scores short patterns.</li>
+            <li>Stable, recurring patterns are <b>motifs</b>.</li>
+            <li>We carry these forward as gentle constraints.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 4 -->
+    <section class="step" id="s4"
+      data-caption="NIM outputs: a compact list of motifs (scaffold for folding).">
+      <span class="badge"><span class="dot"></span> Step 4 — Output (motifs)</span>
+      <div class="stepContent">
+        <div>
+          <div class="cards">
+            <div class="card"><h3>Motif 1: EVQLVESGGGLV</h3><div class="meta">Pos 1–12 • FR1 • Conserved 5/5</div></div>
+            <div class="card"><h3>Motif 2: PGGSLRLSCAASG</h3><div class="meta">Pos 14–26 • FR1 • Conserved 5/5</div></div>
+            <div class="card"><h3>Motif 3: [F/Y][T/S]F</h3><div class="meta">Pos 27–29 • FR1 tail • Minor variability</div></div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Why we care</h4>
+          <ul>
+            <li>Motifs are reliable “scaffold” pieces.</li>
+            <li>We’ll nudge the model to respect them.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 5 -->
+    <section class="step" id="s5"
+      data-caption="OpenFold2-NIM uses the motifs while folding (Evoformer → Structure).">
+      <span class="badge"><span class="dot"></span> Step 5 — OpenFold2-NIM: Evoformer → Structure</span>
+      <div class="stepContent">
+        <div style="position:relative">
+          <div class="blocks">
+            <div class="blk e"></div><div class="blk e"></div><div class="blk e"></div><div class="blk e"></div><div class="blk e"></div><div class="blk e"></div>
+            <div class="blk e"></div><div class="blk e"></div><div class="blk e"></div><div class="blk e"></div><div class="blk e"></div><div class="blk e"></div>
+            <div class="blk s"></div><div class="blk s"></div><div class="blk s"></div><div class="blk s"></div><div class="blk s"></div><div class="blk s"></div>
+            <div class="blk s"></div><div class="blk s"></div><div class="blk s"></div><div class="blk s"></div><div class="blk s"></div><div class="blk s"></div>
+          </div>
+          <div class="legend">
+            <span class="chip"><b>Evoformer</b>: reads alignment & pair info</span>
+            <span class="chip"><b>Structure</b>: places the backbone</span>
+            <span class="chip"><b>NIM</b>: keeps conserved motifs stable</span>
+          </div>
+          <div class="scanner" id="scan5"></div>
+        </div>
+        <aside class="coach">
+          <h4>Simple take</h4>
+          <ul>
+            <li>Evoformer learns which letters like to be near each other.</li>
+            <li>The Structure module bends the chain into 3D.</li>
+            <li>NIM softly nudges motif positions.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 6 -->
+    <section class="step" id="s6"
+      data-caption="Colors = confidence: blue = higher, green = medium, yellow = lower. Pink pins mark motif centers.">
+      <span class="badge"><span class="dot"></span> Step 6 — Predicted 3D (stylized) + confidence</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>Predicted backbone (confidence colors)</h3>
+            <div class="mini">
+              <button id="spinBtn">⟳ Toggle Spin</button>
+              <button id="pinsBtn">✦ Toggle Motif Pins</button>
+              <button id="snapBtn">📸 Snapshot PNG</button>
+              <label for="detailSel" style="font-size:12px; color:var(--muted); margin-left:6px">Detail</label>
+              <select id="detailSel">
+                <option value="low">Low</option>
+                <option value="med" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="ultra">Ultra</option>
+              </select>
+            </div>
+            <div class="glwrap">
+              <!-- small legend overlay -->
+              <div class="legendBox">
+                <div><b>Color = confidence</b></div>
+                <div class="gradBar"></div>
+                <div><span class="sw" style="background:#1e90ff"></span> Higher &nbsp; <span class="sw" style="background:#18d176"></span> Medium &nbsp; <span class="sw" style="background:#ffd166"></span> Lower</div>
+              </div>
+              <canvas id="of2_3d"></canvas>
+            </div>
+            <div class="meta">Blue → green → yellow show decreasing confidence in the backbone position. Pink pins mark motif centers.</div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>How to read this</h4>
+          <ul>
+            <li><b>Curve</b> = the predicted protein backbone for our fragment.</li>
+            <li><b>Color</b> = confidence at each point: blue (higher) → green (medium) → yellow (lower).</li>
+            <li>Use the <b>Detail</b> menu to make the curve smoother (more segments).</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+
+    <!-- STEP 7 -->
+    <section class="step" id="s7"
+      data-caption="We set a clear design goal (bind the amyloid patch) and simple constraints the sampler should respect.">
+      <span class="badge"><span class="dot"></span> Step 7 — Design goal & constraints (amyloid binding)</span>
+
+      <div class="stepContent objWrap">
+        <!-- Left: Goal + schematic + checklist -->
+        <div class="goalCard">
+          <div class="goalHead">
+            <div class="goalIcon"></div>
+            <div>
+              <h3 style="margin:0">Design objective</h3>
+              <div class="subtle">Bind the amyloid surface patch while preserving conserved motifs.</div>
+            </div>
+          </div>
+
+          <!-- tiny schematic (SVG) -->
+          <svg class="objectiveSVG" viewBox="0 0 500 240" aria-label="schematic">
+            <defs>
+              <linearGradient id="lock" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#cfd3da" stop-opacity="0.9"/>
+                <stop offset="1" stop-color="#9aa3ad" stop-opacity="0.5"/>
+              </linearGradient>
+              <linearGradient id="conf" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#1e90ff"/>
+                <stop offset="0.6" stop-color="#18d176"/>
+                <stop offset="1" stop-color="#ffd166"/>
+              </linearGradient>
+            </defs>
+            <!-- amyloid patch -->
+            <rect x="40" y="120" rx="16" ry="16" width="420" height="70"
+                  fill="url(#lock)" stroke="rgba(255,255,255,.25)" />
+            <!-- backbone path hugging patch -->
+            <path d="M80,65
+                     C160,40 220,150 280,120
+                     S380,165 440,145"
+                  fill="none" stroke="url(#conf)" stroke-width="12" stroke-linecap="round"/>
+            <!-- motif pins -->
+            <circle cx="170" cy="95" r="6" fill="#ff9ecd" />
+            <circle cx="305" cy="125" r="6" fill="#ff9ecd" />
+            <circle cx="405" cy="145" r="6" fill="#ff9ecd" />
+            <!-- labels -->
+            <text x="48" y="115" font-size="11" fill="rgba(255,255,255,.8)">Target: amyloid patch</text>
+            <text x="82" y="56" font-size="11" fill="rgba(255,255,255,.8)">Backbone (confidence colors)</text>
+          </svg>
+
+          <!-- checklist -->
+          <div class="checklist">
+            <div class="checkrow">
+              <div class="dotIcon"></div>
+              <div>
+                <b>Keep motifs</b>
+                <div class="small">Fixed spans: 1–12, 14–26, 27–29 (pink pins).</div>
+              </div>
+            </div>
+            <div class="checkrow">
+              <div class="dotIcon"></div>
+              <div>
+                <b>Stay near the patch</b>
+                <div class="small">Prefer backbone within <b>≤ 6–10 Å</b> of the target surface.</div>
+              </div>
+            </div>
+            <div class="checkrow">
+              <div class="dotIcon"></div>
+              <div>
+                <b>Penalize clashes</b>
+                <div class="small">Avoid interpenetration/collisions with the patch.</div>
+              </div>
+            </div>
+            <div class="checkrow">
+              <div class="dotIcon"></div>
+              <div>
+                <b>Reward complementarity</b>
+                <div class="small">Encourage surfaces that “nest” well (shape &amp; orientation).</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- little KPI row (purely decorative) -->
+          <div class="kpis">
+            <span class="kpill">Constraint set: <b>Balanced</b></span>
+            <span class="kpill">Distance target: <b>8 Å</b></span>
+            <span class="kpill">Clash weight: <b>Med</b></span>
+            <span class="kpill">Comp. weight: <b>High</b></span>
+          </div>
+          <div class="kbar"><span></span></div>
+        </div>
+
+        <!-- Right: friendly coach copy -->
+        <aside class="sideCard">
+          <h4>In plain terms</h4>
+          <ul>
+            <li>Make a backbone that <b>hugs the amyloid patch</b>.</li>
+            <li>Don’t break the <b>conserved motifs</b> we trust.</li>
+          </ul>
+          <div style="height:8px"></div>
+          <h4>Why these constraints?</h4>
+          <ul>
+            <li><b>Motifs</b> keep the scaffold stable/recognizable.</li>
+            <li><b>Distance</b> and <b>clash rules</b> stop bad fits early.</li>
+            <li><b>Complementarity</b> nudges toward keys that truly lock in.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+
+    <!-- STEP 8 -->
+    <section class="step" id="s8"
+      data-caption="RFdiffusion forms a backbone from noise near the patch (illustrative).">
+      <span class="badge"><span class="dot"></span> Step 8 — RFdiffusion: sample backbones from noise</span>
+
+      <div class="stepContent">
+        <div class="card" style="position:relative">
+          <div class="toolbar">
+            <button id="rfPlay">▶ Play diffusion</button>
+            <button id="rfReset8">↺ Reset</button>
+            <button id="rfToggleTarget">🧱 Toggle Target</button>
+
+            <label for="rfScrub">Scrub</label>
+            <input id="rfScrub" class="range" type="range" min="0" max="100" step="1" value="0" />
+            <span id="rfTval" class="chip">t = 0.00</span>
+
+            <label for="rfSpeed">Speed</label>
+            <select id="rfSpeed" class="select">
+              <option value="0.75">0.75×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+            </select>
+
+            <div class="progresswrap"><div id="rfProgFill" class="progressfill"></div></div>
+          </div>
+
+          <div class="glwrap">
+            <div class="legendBox">
+              <div><span class="sw" style="background:#9aa3af"></span> Target = amyloid patch</div>
+              <div><span class="sw" style="background:linear-gradient(90deg,#1e90ff,#18d176,#ffd166)"></span> Backbone = key</div>
+            </div>
+            <canvas id="rf_view"></canvas>
+          </div>
+          <div class="legendSoft">Noise (random points) → guided by target proximity → plausible backbone. This is a stylized illustration.</div>
+        </div>
+
+        <aside class="coach">
+          <h4>What’s happening now</h4>
+          <ul>
+            <li><b>Noise</b>: start with unstructured 3D points.</li>
+            <li><b>Guidance</b>: push points to lie near the amyloid patch and each other.</li>
+            <li><b>Backbone</b>: points coalesce into a smooth tube (candidate backbone).</li>
+          </ul>
+          <h4>Tips</h4>
+          <ul>
+            <li>Drag the <b>Scrub</b> to explore any moment of the process.</li>
+            <li>Use <b>Speed</b> to slow down when explaining live.</li>
+            <li>Toggle the <b>Target</b> to see how proximity shapes the path.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+
+    <!-- STEP 9 -->
+    <section class="step" id="s9"
+      data-caption="We browse candidates; contacts and simple scores summarize fit.">
+      <span class="badge"><span class="dot"></span> Step 9 — Screen & rank candidates</span>
+
+      <div class="stepContent">
+        <div class="card" style="position:relative">
+          <div class="mini">
+            <button id="rfPrev">⟵ Prev candidate</button>
+            <button id="rfNext">Next candidate ⟶</button>
+            <button id="rfToggleContacts">🔴 Toggle contacts</button>
+            <button id="rfToggleTarget2">🧱 Toggle Target</button>
+          </div>
+          <div class="glwrap">
+            <div class="legendBox">
+              <div><span class="sw" style="background:#9aa3af"></span> Target = amyloid patch</div>
+              <div><span class="sw" style="background:linear-gradient(90deg,#1e90ff,#18d176,#ffd166)"></span> Backbone = key</div>
+            </div>
+            <canvas id="rf_view2"></canvas>
+          </div>
+          <!-- kept for compatibility, but we populate the panel on the right -->
+          <div id="scoreline" style="display:none"></div>
+        </div>
+
+        <aside class="coach candPanel">
+          <div class="candHead">
+            <h4 style="margin:0;color:#fff">Candidates</h4>
+            <button id="rfReseed">🎲 Reseed 3</button>
+            <label for="rfSort" class="lab">Sort by</label>
+            <select id="rfSort" class="select">
+              <option value="shape">Shape complementarity</option>
+              <option value="contacts">Contacts</option>
+              <option value="iface">Interface area</option>
+              <option value="dist">Avg distance (nearer better)</option>
+              <option value="clash">Clashes (lower better)</option>
+              <option value="bend">Bend (moderate best)</option>
+            </select>
+          </div>
+
+          <div id="candList" class="candList"></div>
+
+          <div class="card">
+            <h3 style="margin:0 0 8px 0;font-size:16px">Details</h3>
+            <div id="candDetail" class="metrics"></div>
+            <div class="meta" style="margin-top:6px">
+              We keep: motif coverage ✓, good target contact without clashes, reasonable shape complementarity.
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+
+    <!-- STEP 10 -->
+    <section class="step" id="s10"
+      data-caption="Final design mock-up: motifs highlighted; contacts shown; snapshot available.">
+      <span class="badge"><span class="dot"></span> Step 10 — Final design (stylized)</span>
+      <div class="stepContent">
+        <div class="card" style="position:relative">
+          <div class="mini">
+            <button id="rfSpin">⟳ Toggle Spin</button>
+            <button id="rfPins">✦ Toggle Motif Pins & Sleeves</button>
+            <button id="rfTarget">🧱 Toggle Target</button>
+            <button id="rfContacts">🔴 Toggle Contacts</button>
+            <button id="rfSnap">📸 Snapshot PNG</button>
+          </div>
+          <div class="glwrap">
+            <div class="legendBox">
+              <div><b>Color = confidence-like</b></div>
+              <div class="gradBar"></div>
+              <div><span class="sw" style="background:#1e90ff"></span> High &nbsp; <span class="sw" style="background:#ffd166"></span> Lower</div>
+            </div>
+            <canvas id="rf_final"></canvas>
+          </div>
+          <div class="meta" style="margin-top:8px">
+            Pink sleeves/pins = conserved motifs. Red dots = contact hotspots with amyloid patch.
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Takeaway</h4>
+          <ul>
+            <li>RFdiffusion proposes; we select and annotate the best fit.</li>
+            <li>Pink sleeves/pins = conserved motifs.</li>
+            <li>Red dots = contact hotspots vs. the amyloid patch.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 11 -->
+    <section class="step" id="s11"
+      data-caption="ProteinMPNN-NIM (1/4): load fixed backbone and pick designable sites.">
+      <span class="badge"><span class="dot"></span> Step 11 — ProteinMPNN-NIM (1/4): fixed backbone + design mask</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>Backbone viewer</h3>
+            <div class="mini">
+              <button id="mpSpin">⟳ Toggle Spin</button>
+              <button id="mpMask">✦ Toggle Design Mask</button>
+              <button id="mpSnap">📸 Snapshot PNG</button>
+            </div>
+            <div class="glwrap"><canvas id="mpnn3d"></canvas></div>
+            <div class="meta">Tube = fixed backbone; pink rings = designable positions; grey beads = rescued (fixed).</div>
+          </div>
+          <div class="mini">
+            <button id="mpMaskA" title="Mask A: 8–15, 28–36, 45–52">Mask A</button>
+            <button id="mpMaskB" title="Mask B: 12–23, 34–40">Mask B</button>
+            <button id="mpMaskClear">Clear</button>
+            <span class="chip" id="mpMaskInfo">Designable residues: 0</span>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>What goes in?</h4>
+          <ul>
+            <li>Protein <b>backbone coordinates</b> are fixed.</li>
+            <li>Select a <b>design mask</b>: which residues can change vs be <b>rescued</b>.</li>
+            <li>We reuse this mask when designs arrive.</li>
+          </ul>
+          <div class="chip">Input: 3D coords (N, Cα)</div>
+          <div class="chip">Mask: boolean per residue</div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 12 -->
+    <section class="step" id="s12"
+      data-caption="ProteinMPNN-NIM (2/4): build graph features and prep an API call.">
+      <span class="badge"><span class="dot"></span> Step 12 — ProteinMPNN-NIM (2/4): features & NIM call</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>Pairwise distances (toy)</h3>
+            <div id="mpDistHeat" class="gridHeat"></div>
+            <div class="meta">We summarize residue–residue geometry into features; NIM packages the request → ProteinMPNN backend.</div>
+          </div>
+          <div class="legend">
+            <span class="chip"><b>Node features</b>: rescued type, index</span>
+            <span class="chip"><b>Edge features</b>: Cα–Cα distances, directions</span>
+            <span class="chip"><b>NIM</b>: batching, scaling, streaming</span>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Why NIM?</h4>
+          <ul>
+            <li>Stable API for ProteinMPNN.</li>
+            <li>Options: temperature, num samples, fixed residues.</li>
+            <li>Streams sequences + scores as they’re ready.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 13 -->
+    <section class="step" id="s13"
+      data-caption="ProteinMPNN-NIM (3/4): sampling controls; scan bar sweeps design sites.">
+      <span class="badge"><span class="dot"></span> Step 13 — ProteinMPNN-NIM (3/4): sampling & AA preferences</span>
+      <div class="stepContent">
+        <div style="position:relative">
+          <div class="card">
+            <h3>Sampling controls</h3>
+            <div class="mini">
+              <label>Temperature <span id="mpTval">0.8</span></label>
+              <input type="range" id="mpTemp" min="0.5" max="1.5" step="0.05" value="0.8" />
+              <button id="mpDesign">🎲 Design 5 sequences</button>
+              <span id="mpStatus" class="chip" aria-live="polite"></span>
+            </div>
+            <div class="meta">Higher temperature → more diverse sequences. The scan bar sweeps across designable positions.</div>
+            <div id="mpScan" class="scanner"></div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <h3>AA preference heatmap (top design window)</h3>
+            <div id="mpAAHeat" class="gridHeat"></div>
+            <div class="meta">Rows = amino acids; columns = current design positions.</div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>How does MPNN choose letters?</h4>
+          <ul>
+            <li>Reads local 3D context → proposes residue identity.</li>
+            <li>Buried sites favor hydrophobics; exposed favor polar/charged (simplified).</li>
+            <li>Mask is respected: rescued stays fixed.</li>
+          </ul>
+          <div class="chip">Output: 5 sequences + scores</div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 14 -->
+    <section class="step" id="s14"
+      data-caption="ProteinMPNN-NIM (4/4): ranked sequences mapped back to 3D.">
+      <span class="badge"><span class="dot"></span> Step 14 — ProteinMPNN-NIM (4/4): rank & recolor in 3D</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>Top designs</h3>
+            <div id="mpEmpty" class="empty11" style="display:none">
+              <span>No designs yet. Click <b>Design 5 sequences</b> on the previous step.</span>
+              <button id="mpQuick">🚀 Run now</button>
+            </div>
+            <div class="seqList" id="mpSeqList"></div>
+            <div class="meta">Click a sequence to color the 3D by residue properties; designed sites glow softly.</div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Interpretation</h4>
+          <ul>
+            <li>Backbone remains fixed (design ≠ folding).</li>
+            <li>Pink rings = designable sites you chose.</li>
+          </ul>
+          <div class="mini">
+            <button id="mpTour">🎯 Auto Tour Sites</button>
+            <button id="mpResetView">🧭 Reset View</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- SINGLE caption bar -->
+    <div class="captionbar" id="caption" aria-live="polite"></div>
+  </div>
+
+  <!-- Progress (14 dots) -->
+  <div class="progress" aria-label="progress">
+    <div class="pdot active" data-dot="1"></div><div class="pdot" data-dot="2"></div>
+    <div class="pdot" data-dot="3"></div><div class="pdot" data-dot="4"></div>
+    <div class="pdot" data-dot="5"></div><div class="pdot" data-dot="6"></div>
+    <div class="pdot" data-dot="7"></div><div class="pdot" data-dot="8"></div>
+    <div class="pdot" data-dot="9"></div><div class="pdot" data-dot="10"></div>
+    <div class="pdot" data-dot="11"></div><div class="pdot" data-dot="12"></div>
+    <div class="pdot" data-dot="13"></div><div class="pdot" data-dot="14"></div>
+  </div>
+
+  <div class="footer">
+    Click <span class="kbd">Play</span> to auto-advance. Keep <span class="kbd">Explain Mode</span> on for the right-hand “Coach” panel.
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------- Intro “mould the key to the lock” (mini 3D) ---------- */
+function createForgeIntro(canvasId){
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+
+  const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x0a0716, 0.028);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100); camera.position.set(3.6, 2.2, 6.3);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.06; controls.minDistance=2; controls.maxDistance=12;
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.55));
+  const dir = new THREE.DirectionalLight(0xffffff,1.05); dir.position.set(3,4,2); scene.add(dir);
+  const rim = new THREE.DirectionalLight(0x88ccff,0.6); rim.position.set(-3,-2,-4); scene.add(rim);
+
+  const root = new THREE.Group(); scene.add(root);
+
+  // --- Lock (amyloid-like surface) ---
+  const lockGeo = new THREE.PlaneGeometry(6, 2.2, 60, 8);
+  const pos = lockGeo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i), y=pos.getY(i);
+    pos.setZ(i, Math.sin(x*1.8)*0.15 + Math.cos(y*3.0)*0.05);
+  }
+  lockGeo.computeVertexNormals();
+  const lockMat = new THREE.MeshPhongMaterial({color:0x9aa3af, specular:0x222222, shininess:12, side:THREE.DoubleSide, transparent:true, opacity:0.55});
+  const lock = new THREE.Mesh(lockGeo, lockMat);
+  lock.rotation.x = -Math.PI/2; lock.position.y = -0.2;
+  root.add(lock);
+
+  // helper: height along lock centerline (for target curve)
+  const lockHeightAt = (x)=> -0.2 + (Math.sin(x*1.8)*0.15 + Math.cos(0)*0.05);
+
+  // --- Key (soft tube) control points: straight → shaped (hugging) ---
+  const NCP = 18, xMin=-2.8, xMax=2.8;
+  const straight=[], shaped=[];
+  for(let i=0;i<NCP;i++){
+    const t=i/(NCP-1), x = xMin + (xMax-xMin)*t;
+    straight.push(new THREE.Vector3(x, 0.9, 0));                          // starts as a rod above surface
+    const tgtY = lockHeightAt(x) + 0.22, sway = 0.25*Math.sin(t*2*Math.PI);
+    shaped.push(new THREE.Vector3(x, tgtY, sway*0.2));                     // ends hugging the surface
+  }
+  let curve = new THREE.CatmullRomCurve3(straight);
+  let tube=null, beads=null;
+
+  function recolorTube(g){
+    const uv=g.attributes.uv, n=g.attributes.position.count;
+    const col=new THREE.BufferAttribute(new Float32Array(n*3),3);
+    for(let i=0;i<n;i++){
+      const u = uv.getY(i);
+      const c = (u<0.55)
+        ? new THREE.Color(0x1e90ff).lerp(new THREE.Color(0x18d176), u/0.55)   // blue→green
+        : new THREE.Color(0x18d176).lerp(new THREE.Color(0xffd166), (u-0.55)/0.45); // green→yellow
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    g.setAttribute('color', col);
+  }
+
+  function buildKey(radius=0.12, tubular=360){
+    if(tube){ root.remove(tube); tube.geometry.dispose(); tube.material.dispose(); }
+    if(beads){ root.remove(beads); beads.children.forEach(m=>{ m.geometry.dispose(); m.material.dispose(); }); }
+    const geom = new THREE.TubeGeometry(curve, tubular, radius, 18, false);
+    recolorTube(geom);
+    tube = new THREE.Mesh(geom, new THREE.MeshPhongMaterial({vertexColors:true, shininess:50, specular:0x335577}));
+    root.add(tube);
+
+    // Cα-style beads for a “living” feel
+    beads = new THREE.Group();
+    const g = new THREE.SphereGeometry(0.06,16,12);
+    for(let k=0;k<NCP;k++){ const p=curve.getPoint(k/(NCP-1)); const m=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:0xddddff})); m.position.copy(p); beads.add(m); }
+    root.add(beads);
+  }
+
+  // morph straight → shaped
+  let tMorph=0, playing=false, last=0;
+  const ease = (u)=> u<0.5 ? 4*u*u*u : 1 - Math.pow(-2*u+2,3)/2;
+
+  function updateCurve(u){
+    const pts=[]; for(let i=0;i<NCP;i++){ const a=straight[i], b=shaped[i]; pts.push(new THREE.Vector3(a.x+(b.x-a.x)*u, a.y+(b.y-a.y)*u, a.z+(b.z-a.z)*u)); }
+    curve = new THREE.CatmullRomCurve3(pts);
+    const segs = 220 + Math.floor(300*u), r = 0.06 + 0.10*u;
+    buildKey(r, segs);
+  }
+  updateCurve(0);
+
+  // tiny “gel particles” during molding
+  const DOTS=220, dotPos=new Float32Array(DOTS*3);
+  for(let i=0;i<DOTS;i++){ dotPos[i*3]=(Math.random()-0.5)*5.4; dotPos[i*3+1]=1.8+Math.random()*0.8; dotPos[i*3+2]=(Math.random()-0.5)*1.6; }
+  const dotsGeo=new THREE.BufferGeometry(); dotsGeo.setAttribute('position', new THREE.BufferAttribute(dotPos,3));
+  const dots=new THREE.Points(dotsGeo, new THREE.PointsMaterial({size:0.03, color:0xffffff, transparent:true, opacity:0.0}));
+  root.add(dots);
+
+  function animate(ts){
+    requestAnimationFrame(animate);
+    const dt = ts - (last||ts); last = ts;
+    if(playing){
+      tMorph = Math.min(1, tMorph + (dt/2400));           // ~2.4s total
+      updateCurve(ease(tMorph));
+      dots.material.opacity = 0.9*(1-tMorph);
+      const a = dots.geometry.attributes.position.array;
+      for(let i=0;i<DOTS;i++){ a[i*3+1] -= 0.01 + 0.02*Math.random(); if(a[i*3+1] < -0.1) a[i*3+1] = 1.8+Math.random()*0.8; }
+      dots.geometry.attributes.position.needsUpdate = true;
+    }
+    controls.update(); renderer.render(scene,camera);
+  }
+  requestAnimationFrame(animate);
+
+  const resize = ()=>{ const r=canvas.parentElement.getBoundingClientRect(); const w=Math.max(10,r.width), h=Math.max(10,r.height); renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); };
+  window.addEventListener('resize', resize, {passive:true}); resize(); setTimeout(resize,50);
+
+  function play(){ if(tMorph>=1) replay(); playing=true; }
+  function pause(){ playing=false; }
+  function replay(){
+    tMorph=0; updateCurve(0); dots.material.opacity=0.9;
+    for(let i=0;i<DOTS;i++){ dotPos[i*3]=(Math.random()-0.5)*5.4; dotPos[i*3+1]=1.8+Math.random()*0.8; dotPos[i*3+2]=(Math.random()-0.5)*1.6; }
+    dots.geometry.attributes.position.needsUpdate = true; playing=true;
+  }
+  return { play, pause, replay };
+}
+
+
+/* ---------- Captions ---------- */
+const CAPTION_FALLBACK = {
+  s1:"We start with a few nearly identical FR1 fragments (input sequences).",
+  s2:"Align them (MSA) to reveal conserved motifs and small variations.",
+  s3:"NIM sweeps the alignment and detects the conserved motif patterns.",
+  s4:"NIM outputs: a compact list of motifs (scaffold for folding).",
+  s5:"OpenFold2-NIM uses the motifs while folding (Evoformer → Structure).",
+  s6:"Stylized 3D result: color ≈ confidence; pink pins = motif centers.",
+  s7:"We define the design goal: bind an amyloid patch while keeping motifs.",
+  s8:"RFdiffusion forms a backbone from noise near the patch (illustrative).",
+  s9:"We browse candidates; contacts and simple scores summarize fit.",
+  s10:"Final design mock-up: motifs highlighted; contacts shown; snapshot available.",
+  s11:"ProteinMPNN-NIM (1/4): load fixed backbone and pick designable sites.",
+  s12:"ProteinMPNN-NIM (2/4): build graph features and prep an API call.",
+  s13:"ProteinMPNN-NIM (3/4): sampling controls; scan bar sweeps design sites.",
+  s14:"ProteinMPNN-NIM (4/4): ranked sequences mapped back to 3D."
+};
+
+/* ---------- Shared helpers ---------- */
+const confColor = (t)=>{
+  const B=new THREE.Color(0x1e90ff), G=new THREE.Color(0x18d176), Y=new THREE.Color(0xffd166);
+  const c=new THREE.Color(); return (t<0.55)? c.copy(B).lerp(G, t/0.55) : c.copy(G).lerp(Y,(t-0.55)/0.45);
+};
+
+/* ---------- Step 6 viewer ---------- */
+function createOF2Viewer({canvasId, pinsBtnId, spinBtnId, snapBtnId, detailSelId}){
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x0a0716, 0.018);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100); camera.position.set(3.6, 2.4, 6.5);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.06; controls.minDistance=1.8; controls.maxDistance=12;
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.5));
+  const dir = new THREE.DirectionalLight(0xffffff,1.1); dir.position.set(3,4,2); scene.add(dir);
+  const rim = new THREE.DirectionalLight(0x88ccff,0.5); rim.position.set(-3,-2,-4); scene.add(rim);
+
+  const root = new THREE.Group(); scene.add(root);
+
+  // base backbone path
+  const N=29, pts=[];
+  for(let i=0;i<N;i++){
+    const t=i/(N-1);
+    pts.push(new THREE.Vector3((t-0.5)*6.0, Math.sin(t*Math.PI*1.5)*1.6, Math.cos(t*Math.PI*2.0)*0.9));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+
+  // active meshes (so we can rebuild detail)
+  let tube=null, beads=null, beadGroup=null;
+
+  const plddtColor = (t)=>{
+    const L=(a,b,u)=>a+(b-a)*u; let r,g,b;
+    if(t<0.55){ const u=t/0.55; r=L(30,24,u); g=L(144,209,u); b=L(255,118,u); }
+    else{ const u=(t-0.55)/0.45; r=L(24,255,u); g=L(209,209,u); b=L(118,102,u); }
+    return new THREE.Color(r/255,g/255,b/255);
+  };
+
+  // build geometry at a requested detail level
+  function buildDetail(level){
+    if(tube){ root.remove(tube); tube.geometry.dispose(); tube.material.dispose(); tube=null; }
+    if(beads){ beadGroup.children.forEach(m=>{ m.geometry.dispose(); m.material.dispose(); }); root.remove(beadGroup); beads=null; beadGroup=null; }
+
+    const cfg = (()=>{
+      switch(level){
+        case 'low':   return {tubular:160, radial:12, beadR:0.055, beadSeg:12};
+        case 'high':  return {tubular:900, radial:28, beadR:0.07,  beadSeg:20};
+        case 'ultra': return {tubular:1600,radial:32, beadR:0.075, beadSeg:24};
+        default:      return {tubular:320, radial:16, beadR:0.06,  beadSeg:16}; // med
+      }
+    })();
+
+    // tube with vertex colors
+    const g = new THREE.TubeGeometry(curve, cfg.tubular, 0.12, cfg.radial, false);
+    const count = g.attributes.position.count;
+    const uv = g.attributes.uv;
+    const col = new THREE.BufferAttribute(new Float32Array(count*3), 3);
+    for(let i=0;i<count;i++){
+      const frac = uv ? uv.getY(i) : (i/(count-1));
+      const c = plddtColor(frac);
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    g.setAttribute('color', col);
+    tube = new THREE.Mesh(g, new THREE.MeshPhongMaterial({vertexColors:true, shininess:50, specular:0x335577}));
+    root.add(tube);
+
+    // CA beads
+    beadGroup = new THREE.Group();
+    const beadGeom = new THREE.SphereGeometry(cfg.beadR, cfg.beadSeg, cfg.beadSeg);
+    for(let k=0;k<N;k++){
+      const t=k/(N-1), p=curve.getPoint(t);
+      const bead=new THREE.Mesh(beadGeom, new THREE.MeshPhongMaterial({color: plddtColor(t)}));
+      bead.position.copy(p); beadGroup.add(bead);
+    }
+    root.add(beadGroup);
+  }
+
+  // motif pins
+  const pins = new THREE.Group(); root.add(pins);
+  const pinGeom = new THREE.SphereGeometry(0.12, 24, 18);
+  const pinMat  = new THREE.MeshPhongMaterial({color:0xff9ecd, emissive:0x7f3a60, emissiveIntensity:0.8});
+  const pinCenters = [];
+  for(const [a,b] of [[1,12],[14,26],[27,29]]){
+    const mid=(((a+b)/2)-1)/(N-1);
+    const m = new THREE.Mesh(pinGeom, pinMat); m.position.copy(curve.getPoint(mid)); pins.add(m);
+    pinCenters.push(m.position.clone());
+  }
+
+  // fly/tour
+  function flyTo(target, ms=900){
+    const startP = camera.position.clone();
+    const endP   = target.clone().add(new THREE.Vector3(1.3, 0.8, 1.3));
+    const t0 = performance.now();
+    (function step(now){
+      const u = Math.min(1, (now - t0)/ms);
+      camera.position.lerpVectors(startP, endP, u);
+      camera.lookAt(target);
+      renderer.render(scene, camera);
+      if (u < 1) requestAnimationFrame(step);
+    })(performance.now());
+  }
+  async function focusMotif(idx){ flyTo(pinCenters[Math.max(0, Math.min(idx, pinCenters.length-1))], 900); }
+  async function tourMotifs(){ for (let k=0; k<pinCenters.length; k++){ await focusMotif(k); await new Promise(r=>setTimeout(r, 600)); } }
+
+  // sizing + render
+  const resize = ()=>{
+    const r = renderer.domElement.parentElement.getBoundingClientRect();
+    const w = Math.max(10, r.width), h = Math.max(10, r.height);
+    renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize', resize, {passive:true}); resize(); setTimeout(resize,50);
+
+  let spin=true, a=0;
+  (function animate(){
+    requestAnimationFrame(animate);
+    if(spin){ a+=0.005; root.rotation.y=a; }
+    controls.update(); renderer.render(scene, camera);
+  })();
+
+  // controls
+  document.getElementById(spinBtnId).onclick = ()=>{ spin=!spin; };
+  document.getElementById(pinsBtnId).onclick = ()=>{ pins.visible = !pins.visible; };
+  document.getElementById(snapBtnId).onclick = ()=>{
+    const prev = scene.background; scene.background = new THREE.Color(0x0a0716);
+    renderer.render(scene, camera);
+    const link = document.createElement('a'); link.href=renderer.domElement.toDataURL('image/png'); link.download='openfold2_nim_3d.png'; link.click();
+    scene.background = prev;
+  };
+  if(detailSelId){
+    const sel = document.getElementById(detailSelId);
+    buildDetail(sel.value);
+    sel.addEventListener('change', ()=> buildDetail(sel.value));
+  } else {
+    buildDetail('med');
+  }
+
+  return { reset:()=>{ a=0; root.rotation.set(0,0,0); }, focusMotif, tourMotifs };
+}
+
+
+
+/* ---------- RF mock components (8–10) ---------- */
+function makeAmyloidPatch(){
+  const g=new THREE.PlaneGeometry(6,2.2,60,8);
+  const p=g.attributes.position;
+  for(let i=0;i<p.count;i++){ const x=p.getX(i), y=p.getY(i); p.setZ(i, Math.sin(x*1.8)*0.15 + Math.cos(y*3.0)*0.05); }
+  const m=new THREE.MeshPhongMaterial({color:0x9ca3af, specular:0x222222, shininess:10, side:THREE.DoubleSide, transparent:true, opacity:0.5});
+  const mesh=new THREE.Mesh(g,m); mesh.rotation.x=-Math.PI/2; mesh.position.y=-0.2; return mesh;
+}
+function makeBackbone(points, radius=0.12){
+  const curve=new THREE.CatmullRomCurve3(points);
+  const tube=new THREE.TubeGeometry(curve, 320, radius, 16, false);
+  const uv=tube.attributes.uv; const arr=new Float32Array(tube.attributes.position.count*3);
+  for(let i=0;i<tube.attributes.position.count;i++){ const t=uv.getY(i), c=confColor(t); arr[i*3]=c.r; arr[i*3+1]=c.g; arr[i*3+2]=c.b; }
+  tube.setAttribute('color', new THREE.BufferAttribute(arr,3));
+  const mat=new THREE.MeshPhongMaterial({vertexColors:true, shininess:50, specular:0x335577});
+  return {mesh:new THREE.Mesh(tube,mat), curve};
+}
+function residueBeads(curve, N=29){
+  const grp=new THREE.Group(), beads=[]; const g=new THREE.SphereGeometry(0.06,16,12);
+  for(let k=0;k<N;k++){ const t=k/(N-1), p=curve.getPoint(t);
+    const b=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:confColor(t)})); b.position.copy(p); grp.add(b); beads.push(b); }
+  return {group:grp, beads};
+}
+function motifDecor(curve){
+  const sleeves=new THREE.Group(), pins=new THREE.Group();
+  const spans=[[1,12,0x9b89ff],[14,26,0x22e1ff],[27,29,0xff9ecd]];
+  const pinG=new THREE.SphereGeometry(0.12,24,18);
+  const pinM=new THREE.MeshPhongMaterial({color:0xff9ecd, emissive:0x7f3a60, emissiveIntensity:0.85});
+  for(const [a,b,c] of spans){
+    const t0=(a-1)/28, t1=(b-1)/28;
+    const pts=[]; for(let j=0;j<=120;j++){ const u=t0+(t1-t0)*j/120; pts.push(curve.getPoint(u)); }
+    const sub=new THREE.CatmullRomCurve3(pts);
+    const g=new THREE.TubeGeometry(sub,120,0.15,20,false);
+    const m=new THREE.MeshPhongMaterial({color:c, transparent:true, opacity:0.35, emissive:c, emissiveIntensity:0.65});
+    sleeves.add(new THREE.Mesh(g,m));
+    const mid=(t0+t1)/2, p=curve.getPoint(mid); const pin=new THREE.Mesh(pinG,pinM); pin.position.copy(p); pins.add(pin);
+  }
+  return {sleeves,pins};
+}
+function contactDots(beads){
+  const grp=new THREE.Group(); const g=new THREE.SphereGeometry(0.07,12,10);
+  const m=new THREE.MeshPhongMaterial({color:0xff4757, emissive:0xaa2233, emissiveIntensity:0.8});
+  for(const b of beads){ if(Math.abs(b.position.y + 0.2) < 0.22){ const d=new THREE.Mesh(g,m); d.position.copy(b.position); grp.add(d); } }
+  return grp;
+}
+function rfCandPoints(THREEref, seed=0){
+  const pts=[]; for(let i=0;i<12;i++){
+    const t=i/11, dx=(seed===0?0: seed===1?0.3:-0.25), hz=(seed===2?1.2:1.0);
+    pts.push(new THREEref.Vector3((t-0.5)*5.0 + dx, -0.05 + Math.sin(t*3.2)*0.6, Math.cos(t*2.4*hz)*0.7));
+  } return pts;
+}
+function rfViewer(canvasId){
+  const canvas=document.getElementById(canvasId);
+  const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  const scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x0a0716,0.018);
+  const camera=new THREE.PerspectiveCamera(40,1,0.1,100); camera.position.set(3.6,2.4,6.5);
+  const ctl=new OrbitControls(camera, renderer.domElement); ctl.enableDamping=true; ctl.dampingFactor=0.06; ctl.minDistance=1.8; ctl.maxDistance=12;
+  scene.add(new THREE.AmbientLight(0xffffff,0.5)); const d=new THREE.DirectionalLight(0xffffff,1.1); d.position.set(3,4,2); scene.add(d);
+  const rim=new THREE.DirectionalLight(0x88ccff,0.5); rim.position.set(-3,-2,-4); scene.add(rim);
+  const root=new THREE.Group(); scene.add(root);
+  let spin=true, rot=0;
+  (function anim(){ requestAnimationFrame(anim); if(spin){ rot+=0.005; root.rotation.y=rot; } ctl.update(); renderer.render(scene,camera); })();
+  const resize=()=>{ const r=canvas.parentElement.getBoundingClientRect(); const w=Math.max(10,r.width), h=Math.max(10,r.height);
+    renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); };
+  window.addEventListener('resize', resize, {passive:true}); resize(); setTimeout(resize,50);
+  const setSpin=(on)=>{ spin=on; };
+  const snapshot=()=>{ const prev=scene.background; scene.background=new THREE.Color(0x0a0716);
+    renderer.render(scene,camera); const a=document.createElement('a'); a.href=renderer.domElement.toDataURL('image/png'); a.download='rf_view.png'; a.click(); scene.background=prev; };
+  return { THREE, scene, root, camera, setSpin, snapshot, makeAmyloidPatch, makeBackbone, residueBeads, motifDecor, contactDots };
+}
+
+/* ---------- ProteinMPNN (viewer) ---------- */
+const AA = "ACDEFGHIKLMNPQRSTVWY".split("");
+const AA_CLASS = {
+  hydrophobic: new Set(['A','V','L','I','M','F','W','Y']),
+  polar:       new Set(['S','T','N','Q','C','G']),
+  positive:    new Set(['K','R','H']),
+  negative:    new Set(['D','E']),
+  special:     new Set(['P'])
+};
+function aaClass(a){
+  if(AA_CLASS.hydrophobic.has(a)) return 'hydrophobic';
+  if(AA_CLASS.polar.has(a))      return 'polar';
+  if(AA_CLASS.positive.has(a))   return 'positive';
+  if(AA_CLASS.negative.has(a))   return 'negative';
+  return 'special';
+}
+function classColor(k){
+  switch(k){
+    case 'hydrophobic': return new THREE.Color(0.35,0.78,0.62);
+    case 'polar':       return new THREE.Color(0.58,0.70,0.95);
+    case 'positive':    return new THREE.Color(0.85,0.64,0.95);
+    case 'negative':    return new THREE.Color(0.99,0.78,0.52);
+    default:            return new THREE.Color(0.98,0.88,0.42);
+  }
+}
+function createMPNNViewer({canvasId, spinBtnId, maskBtnId, snapBtnId, onMaskChange}){
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x0a0716, 0.02);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.set(4.2, 2.6, 7.2);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.06;
+  controls.minDistance = 2; controls.maxDistance = 16;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0); dir.position.set(3,4,2); scene.add(dir);
+  const rim = new THREE.DirectionalLight(0x88ccff, 0.6); rim.position.set(-3,-2,-4); scene.add(rim);
+
+  const group = new THREE.Group(); scene.add(group);
+
+  const N = 60, pts = [];
+  for(let i=0;i<N;i++){
+    const t = i/(N-1);
+    const r = 1.2 + 0.35*Math.sin(t*8.0*Math.PI);
+    const ang = t*4.0*Math.PI;
+    const x = r*Math.cos(ang);
+    const z = r*Math.sin(ang);
+    const y = (t-0.5)*7.0 + 0.6*Math.sin(t*6.0*Math.PI);
+    pts.push(new THREE.Vector3(x,y,z));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const tubeGeom = new THREE.TubeGeometry(curve, 480, 0.10, 16, false);
+  const tube = new THREE.Mesh(
+    tubeGeom,
+    new THREE.MeshPhongMaterial({color:0x6ea8ff, shininess:40, specular:0x223344, transparent:true, opacity:0.35})
+  );
+  group.add(tube);
+
+  const beads = new THREE.Group(); group.add(beads);
+  const beadGeom = new THREE.SphereGeometry(0.08, 16, 12);
+  const beadMeshes = [], positions = [];
+  for(let k=0;k<N;k++){
+    const t=k/(N-1), p=curve.getPoint(t);
+    positions.push(p.clone());
+    const m=new THREE.Mesh(beadGeom, new THREE.MeshPhongMaterial({color:0xeeeeee, emissive:0x000000}));
+    m.position.copy(p); beads.add(m); beadMeshes.push(m);
+  }
+
+  const rings = new THREE.Group(); group.add(rings);
+  const ringGeom = new THREE.TorusGeometry(0.15, 0.02, 12, 36);
+  const ringMat = new THREE.MeshPhongMaterial({color:0xff9ecd, emissive:0x7f3a60, emissiveIntensity:0.8});
+  const ringMeshes = [];
+  for(let k=0;k<N;k++){
+    const r=new THREE.Mesh(ringGeom, ringMat); r.visible=false;
+    r.position.copy(positions[k]); r.rotation.x=Math.random()*Math.PI; r.rotation.y=Math.random()*Math.PI;
+    rings.add(r); ringMeshes.push(r);
+  }
+
+  let spin = true;
+  let designMask = new Array(N).fill(false);
+  let pulseMask = new Array(N).fill(false);
+
+  const resize = ()=>{
+    const parent = renderer.domElement.parentElement;
+    const {width, height} = parent.getBoundingClientRect();
+    renderer.setSize(width, height, false);
+    camera.aspect = width/height; camera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize', resize, {passive:true}); resize(); setTimeout(resize,50);
+
+  let a=0, tPulse=0;
+  const animate = ()=>{
+    requestAnimationFrame(animate);
+    if(spin){ a+=0.005; group.rotation.y=a; }
+    tPulse += 0.04;
+    for(let i=0;i<N;i++){
+      const m = beadMeshes[i];
+      if(pulseMask[i]) {
+        const s = 1 + 0.12*Math.sin(tPulse + i*0.25);
+        m.scale.set(s,s,s);
+        m.material.emissive.setRGB(0.08+0.08*Math.sin(tPulse), 0.22, 0.18);
+      } else {
+        m.scale.set(1,1,1);
+        m.material.emissive.setRGB(0,0,0);
+      }
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  };
+  animate();
+
+  function setMask(indices){
+    designMask.fill(false);
+    indices.forEach(i=>{ if(i>=0 && i<N){ designMask[i]=true; }});
+    updateRings(); onMaskChange && onMaskChange(designMask);
+  }
+  function clearMask(){ designMask.fill(false); updateRings(); onMaskChange && onMaskChange(designMask); }
+  function updateRings(){ for(let i=0;i<N;i++){ ringMeshes[i].visible = !!designMask[i]; } }
+
+  function colorBySequence(seq){
+    for(let i=0;i<N;i++){
+      const bead = beadMeshes[i];
+      if(designMask[i]) {
+        const aa = seq[i] || 'A';
+        bead.material.color.copy(classColor(aaClass(aa)));
+      } else {
+        bead.material.color.setHex(0xaaaaaa);
+      }
+    }
+    pulseMask = designMask.slice();
+  }
+  function resetColors(){
+    for(const m of beadMeshes){ m.material.color.setHex(0xeeeeee); m.scale.set(1,1,1); m.material.emissive.setRGB(0,0,0); }
+    pulseMask.fill(false);
+  }
+  function flyToResidue(idx, ms=900){
+    const target = positions[idx].clone();
+    const start = controls.target.clone();
+    const startP = camera.position.clone();
+    const dir = startP.clone().sub(start);
+    const endP = target.clone().add(dir.multiplyScalar(0.55));
+    const t0 = performance.now(); const ease=u=>u*(2-u);
+    return new Promise(resolve=>{
+      (function step(now){
+        const u=Math.min(1,(now-t0)/ms), e=ease(u);
+        controls.target.lerpVectors(start, target, e);
+        camera.position.lerpVectors(startP, endP, e);
+        if(u<1) requestAnimationFrame(step); else resolve();
+      })(performance.now());
+    });
+  }
+
+  document.getElementById(spinBtnId).onclick = ()=>{ spin=!spin; };
+  document.getElementById(maskBtnId).onclick = ()=>{ rings.visible = !rings.visible; };
+  document.getElementById(snapBtnId).onclick = ()=>{
+    const prev = scene.background; scene.background = new THREE.Color(0x0a0716);
+    renderer.render(scene, camera);
+    const link = document.createElement('a'); link.href=renderer.domElement.toDataURL('image/png'); link.download='proteinmpnn_nim_3d.png'; link.click();
+    scene.background = prev;
+  };
+
+  return {
+    N, setMask, clearMask, updateRings,
+    getMask: ()=>designMask.slice(),
+    colorBySequence, resetColors,
+    focusResidue: (i)=>flyToResidue(i),
+    tourMask: async ()=>{
+      const idxs = designMask.map((v,i)=>v?i:null).filter(v=>v!==null);
+      for(const i of idxs){ await flyToResidue(i,900); await new Promise(r=>setTimeout(r,280)); }
+    },
+    resetView: ()=>{ controls.reset(); group.rotation.set(0,0,0); a=0; },
+  };
+}
+
+/* ---------- App logic ---------- */
+const steps = ["s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11","s12","s13","s14"];
+let i=0, playing=false; const dots=[...document.querySelectorAll('.pdot')];
+let explainOn=true, timers=[];
+let of2, V8, V9, V10, rfTarget8, rfDots8, rfBackbone8, rfIdx=0, mesh9, beads9, contacts9, target9;
+let MP=null, mpLastBatch=null;
+
+function updateCaption(id){
+  const cap = document.getElementById('caption');
+  const section = document.getElementById(id);
+  const fromData = section?.dataset?.caption;
+  cap.textContent = (fromData && fromData.trim()) ? fromData : (CAPTION_FALLBACK[id] || '');
+}
+
+function setExplainMode(on){
+  explainOn = on;
+  document.body.setAttribute('data-explain', on ? 'on' : 'off');
+  const btn = document.getElementById('explainToggle');
+  if (btn) btn.textContent = on ? "💬 Explain Mode: ON" : "💬 Explain Mode: OFF";
+  updateCaption(steps[i]);
+}
+
+/* init helpers for earlier steps */
+function initS1(){
+  const ids=["s1l1","s1l2","s1l3","s1l4","s1l5"].map(id=>document.getElementById(id));
+  ids.forEach(l=>l.classList.remove('show'));
+  [150,450,750,1050,1350].forEach((t,k)=>timers.push(setTimeout(()=>ids[k].classList.add('show'), t)));
+  if(playing) timers.push(setTimeout(next,2300));
+}
+function initS2(){
+  const msa = document.getElementById('msa2');
+  const guides = document.getElementById('guides'); guides.innerHTML='';
+  const w = msa.clientWidth;
+  [12,26,27].map(n => (n/29)*w + 6).forEach(x=>{
+    const g=document.createElement('div'); g.className='guide'; g.style.left=x+'px'; guides.appendChild(g);
+  });
+  if(playing) timers.push(setTimeout(next,2600));
+}
+function initS3(){
+  const scanner=document.getElementById('scanner');
+  scanner.classList.remove('animate'); void scanner.offsetWidth; scanner.classList.add('animate');
+  if(playing) timers.push(setTimeout(next,5200));
+}
+function initS5(){
+  const scan=document.getElementById('scan5');
+  scan.classList.remove('animate'); void scan.offsetWidth; scan.classList.add('animate');
+  if(playing) timers.push(setTimeout(next,5200));
+}
+function initS6(){
+  if(!of2){
+    of2 = createOF2Viewer({
+      canvasId:'of2_3d',
+      pinsBtnId:'pinsBtn',
+      spinBtnId:'spinBtn',
+      snapBtnId:'snapBtn',
+      detailSelId:'detailSel'   // ← new
+    });
+  }
+}
+let rfAnimRunId = 0;
+
+function ensureS8(){
+  if(V8) return;
+
+  V8 = rfViewer('rf_view');
+  rfTarget8 = V8.makeAmyloidPatch(); V8.root.add(rfTarget8);
+
+  // UI elements
+  const playBtn = document.getElementById('rfPlay');
+  const resetBtn = document.getElementById('rfReset8');
+  const scrub = document.getElementById('rfScrub');
+  const tchip = document.getElementById('rfTval');
+  const prog = document.getElementById('rfProgFill');
+  const speedSel = document.getElementById('rfSpeed');
+
+  // State
+  let playing = false;
+  let t = 0;                 // 0 → 1 diffusion time
+  let speed = 1;             // multiplier
+  let lastTime = 0;
+  let done = false;
+
+  // Geometry holders
+  let rfCloudGeo, rfCloud, startPts = [], destPts = [];
+  rfBackbone8 = null;
+
+  // Build target backbone path (destination curve)
+  const ctr = rfCandPoints(V8.THREE, 0);               // candidate control points
+  const path = new V8.THREE.CatmullRomCurve3(ctr);
+  const SAMPLES = 600;
+
+  // Initialize a fresh cloud
+  function makeCloud(){
+    // start points: random box near the target
+    startPts = [];
+    for(let i=0;i<SAMPLES;i++){
+      startPts.push(new V8.THREE.Vector3(
+        (Math.random()-0.5)*5,
+        Math.random()*2-0.5,
+        (Math.random()-0.5)*2
+      ));
+    }
+    // destination points: wrap along the curve
+    destPts = [];
+    for(let i=0;i<SAMPLES;i++){
+      const u = (i % 200) / 199;        // repeat along the curve
+      destPts.push(path.getPoint(u));
+    }
+    // geometry
+    rfCloudGeo = new V8.THREE.BufferGeometry().setFromPoints(startPts);
+    const mat = new V8.THREE.PointsMaterial({color:0xffffff, size:0.03, transparent:true, opacity:0.9});
+    rfCloud = new V8.THREE.Points(rfCloudGeo, mat);
+    V8.root.add(rfCloud);
+  }
+
+  function clearBackbone(){
+    if(rfBackbone8){ V8.root.remove(rfBackbone8.mesh); rfBackbone8=null; }
+  }
+
+  function showBackbone(){
+    if(rfBackbone8) return;
+    rfBackbone8 = V8.makeBackbone(ctr);
+    V8.root.add(rfBackbone8.mesh);
+  }
+
+  function updateCloud(){
+    // Interpolate from startPts → destPts at time t
+    const P = new Array(SAMPLES);
+    for(let i=0;i<SAMPLES;i++){
+      const a = startPts[i], b = destPts[i];
+      P[i] = new V8.THREE.Vector3(
+        a.x + (b.x - a.x)*t,
+        a.y + (b.y - a.y)*t,
+        a.z + (b.z - a.z)*t
+      );
+    }
+    rfCloudGeo.setFromPoints(P);
+    rfCloudGeo.attributes.position.needsUpdate = true;
+    rfCloud.material.opacity = 0.9*(1-Math.min(t,1));
+  }
+
+  function setT(u){
+    t = Math.max(0, Math.min(1, u));
+    scrub.value = Math.round(t*100);
+    tchip.textContent = `t = ${t.toFixed(2)}`;
+    prog.style.width = `${t*100}%`;
+    if(!done){
+      updateCloud();
+      if(t>=1){
+        // finalize
+        done = true;
+        if(rfCloud){ V8.root.remove(rfCloud); rfCloud=null; }
+        showBackbone();
+        playBtn.textContent = '▶ Replay';
+        playing = false;
+      }
+    }
+  }
+
+  function step(now){
+    if(!playing) { lastTime = now; return; }
+    const dt = Math.min(60, now - lastTime); // ms cap
+    lastTime = now;
+    setT(t + (dt/2200) * speed); // ~2.2s at 1×
+  }
+
+  // Hook into the viewer’s render loop (already requestAnimating).
+  // We just tap the RAF to advance t when playing.
+  (function rafTick(ts){
+    step(ts);
+    requestAnimationFrame(rafTick);
+  })(performance.now());
+
+  // UI wiring
+  playBtn.onclick = ()=>{
+    if(done){ // replay from start
+      reset(); playing = true;
+      playBtn.textContent = '⏸ Pause';
+      return;
+    }
+    playing = !playing;
+    playBtn.textContent = playing ? '⏸ Pause' : '▶ Play diffusion';
+  };
+  resetBtn.onclick = ()=> reset();
+  document.getElementById('rfToggleTarget').onclick = ()=> rfTarget8.visible = !rfTarget8.visible;
+  scrub.oninput = ()=>{ done=false; clearBackbone(); if(!rfCloud){ makeCloud(); } setT(scrub.value/100); };
+  speedSel.onchange = ()=>{ speed = parseFloat(speedSel.value)||1; };
+
+  function reset(){
+    // clear everything to noise
+    playing = false; done = false; setT(0);
+    playBtn.textContent = '▶ Play diffusion';
+    if(rfCloud){ V8.root.remove(rfCloud); rfCloud=null; }
+    clearBackbone();
+    makeCloud();
+    setT(0);
+  }
+
+  // first init
+  reset();
+}
+
+
+function ensureS9(){
+  if(V9) return;
+
+  V9 = rfViewer('rf_view2');
+  const panelList = document.getElementById('candList');
+  const panelDetail = document.getElementById('candDetail');
+  const sortSel = document.getElementById('rfSort');
+
+  // Target plane
+  let target9 = V9.makeAmyloidPatch(); V9.root.add(target9);
+
+  // Scene objects for current pick
+  let mesh9 = null, beads9 = null, contacts9 = null;
+
+  // --- simple metrics on a backbone curve ---
+  function evaluate(points){
+    const curve = new V9.THREE.CatmullRomCurve3(points);
+    // beads on curve
+    const N=29, pos=[]; for(let k=0;k<N;k++) pos.push(curve.getPoint(k/(N-1)));
+    // patch centered at y=-0.2 in our mock
+    const near = (p)=>Math.abs(p.y+0.2);
+    const contacts = pos.filter(p => near(p) < 0.22).length;
+    const clashes  = pos.filter(p => (p.y+0.2) < -0.06).length; // "below" the patch
+    const avgDist  = pos.reduce((a,p)=>a+near(p),0)/pos.length;
+
+    // simple curvature proxy
+    let bend=0;
+    for(let k=1;k<pos.length-1;k++){
+      const a = pos[k].clone().sub(pos[k-1]).normalize();
+      const b = pos[k+1].clone().sub(pos[k]).normalize();
+      bend += Math.acos( Math.min(1, Math.max(-1, a.dot(b))) );
+    }
+    bend /= (pos.length-2); // radians per step
+
+    // squashed scores just for UI
+    const iface = Math.round(contacts * 1.4); // pretend area
+    const shape = Math.round( 100 * (1/(1+avgDist)) * (1 - 0.03*clashes) );
+
+    return {curve, pos, contacts, clashes, avgDist, iface, shape, bend};
+  }
+
+  // --- make a few different seeds and keep them stable per generation ---
+  function basePoints(seed){
+    // start from provided helper and then lightly mutate for more variety
+    const pts = rfCandPoints(V9.THREE, seed%3).map(p=>p.clone());
+    const rng = (a)=> (Math.sin(seed*97 + a*13.37)*0.5+0.5); // deterministic
+    for(let i=0;i<pts.length;i++){
+      const u = i/(pts.length-1);
+      pts[i].x += (rng(i)-0.5) * (0.35 + 0.2*u);
+      pts[i].y += (rng(i+11)-0.5) * (0.25);
+      pts[i].z += (rng(i+23)-0.5) * (0.25);
+    }
+    return pts;
+  }
+
+  let generation = 0;
+  let cands = [];
+  function generate(){
+    cands = [0,1,2].map(s => {
+      const pts = basePoints(s + generation*7);
+      const ev = evaluate(pts);
+      return {id:`${generation}-${s}`, seed:s, pts, ...ev};
+    });
+    // default sort
+    sortBy(sortSel.value);
+    renderList();
+    show(0);
+  }
+
+  function sortBy(key){
+    cands.sort((a,b)=>{
+      if(key==='contacts') return b.contacts - a.contacts;
+      if(key==='iface')    return b.iface    - a.iface;
+      if(key==='dist')     return a.avgDist  - b.avgDist;        // nearer is better
+      if(key==='clash')    return a.clashes  - b.clashes;        // fewer better
+      if(key==='bend')     return Math.abs(a.bend-0.22) - Math.abs(b.bend-0.22); // prefer moderate bend
+      return b.shape - a.shape; // shape (default)
+    });
+  }
+
+  function renderList(){
+    panelList.innerHTML = '';
+    cands.forEach((c,idx)=>{
+      const div = document.createElement('div'); div.className='cCard'; div.dataset.idx=idx;
+      div.innerHTML = `
+        <div class="cName">Cand ${idx+1}</div>
+        <div class="badges">
+          <span class="badgeMini">Shape ${c.shape}%</span>
+          <span class="badgeMini">Contacts ${c.contacts}</span>
+          <span class="badgeMini">Clash ${c.clashes}</span>
+        </div>`;
+      div.onclick = ()=> show(idx);
+      panelList.appendChild(div);
+    });
+  }
+
+  function fillBar(row,label,val,unit,max=100){
+    const wrap = document.createElement('div'); wrap.className='mRow';
+    wrap.innerHTML = `<div class="lab">${label}</div>
+      <div class="mBar"><div class="mFill" style="width:${Math.max(0,Math.min(100, (val/max)*100))}%"></div></div>
+      <div class="mVal">${unit==='Å' ? val.toFixed(2)+' Å' : `${Math.round(val)}${unit}`}</div>`;
+    row.appendChild(wrap);
+  }
+
+  function show(k){
+    // highlight card
+    [...panelList.children].forEach((n,i)=>n.classList.toggle('active', i===k));
+
+    const cand = cands[k];
+    // clean old meshes
+    if(mesh9){ V9.root.remove(mesh9.mesh); mesh9=null; }
+    if(beads9){ V9.root.remove(beads9.group); beads9=null; }
+    if(contacts9){ V9.root.remove(contacts9); contacts9=null; }
+
+    // draw new
+    mesh9 = V9.makeBackbone(cand.pts); V9.root.add(mesh9.mesh);
+    beads9 = V9.residueBeads(cand.curve); V9.root.add(beads9.group);
+    contacts9 = V9.contactDots(beads9.beads); V9.root.add(contacts9); contacts9.visible=false;
+
+    // details
+    panelDetail.innerHTML='';
+    fillBar(panelDetail,'Shape complement.', cand.shape, '%', 100);
+    fillBar(panelDetail,'Interface area',  cand.iface, '%', 100);
+    fillBar(panelDetail,'Contacts',         cand.contacts, '',   30);
+    fillBar(panelDetail,'Avg dist to patch',cand.avgDist, 'Å',   1.2);
+    fillBar(panelDetail,'Clashes (lower)',  cand.clashes, '',    12);
+    fillBar(panelDetail,'Bend (radians)',   cand.bend,   '',     0.6);
+  }
+
+  // Hook up controls
+  document.getElementById('rfPrev').onclick = ()=>{
+    const cur = [...panelList.children].findIndex(x=>x.classList.contains('active'));
+    show((cur - 1 + cands.length) % cands.length);
+  };
+  document.getElementById('rfNext').onclick = ()=> show( ([...panelList.children].findIndex(x=>x.classList.contains('active')) + 1) % cands.length );
+  document.getElementById('rfToggleContacts').onclick = ()=>{ if(contacts9) contacts9.visible=!contacts9.visible; };
+  document.getElementById('rfToggleTarget2').onclick = ()=> target9.visible = !target9.visible;
+  document.getElementById('rfReseed').onclick = ()=>{ generation++; generate(); };
+  sortSel.onchange = ()=>{ sortBy(sortSel.value); renderList(); show(0); };
+
+  generate();
+}
+
+function ensureS10(){
+  if(V10) return;
+  V10 = rfViewer('rf_final');
+  const target10 = V10.makeAmyloidPatch(); V10.root.add(target10);
+  const finalPts = rfCandPoints(V10.THREE,0);
+  const finalBB = V10.makeBackbone(finalPts); V10.root.add(finalBB.mesh);
+  const deco = V10.motifDecor(finalBB.curve); V10.root.add(deco.sleeves); V10.root.add(deco.pins);
+  const r10 = V10.residueBeads(finalBB.curve); V10.root.add(r10.group);
+  const hot10 = V10.contactDots(r10.beads); V10.root.add(hot10);
+  let spinOn=true;
+  document.getElementById('rfSpin').onclick = ()=>{ spinOn=!spinOn; V10.setSpin(spinOn); };
+  document.getElementById('rfPins').onclick = ()=>{ deco.sleeves.visible=!deco.sleeves.visible; deco.pins.visible=!deco.pins.visible; };
+  document.getElementById('rfTarget').onclick = ()=> target10.visible=!target10.visible;
+  document.getElementById('rfContacts').onclick = ()=> hot10.visible=!hot10.visible;
+  document.getElementById('rfSnap').onclick = ()=> V10.snapshot();
+}
+
+/* ---------- ProteinMPNN multi-step (11–14) ---------- */
+function heatColor(v){
+  const lerp=(a,b,t)=>a+(b-a)*t; let r,g,b;
+  if(v<0.5){ const t=v/0.5; r=lerp(30,34,t); g=lerp(144,209,t); b=lerp(255,170,t); }
+  else { const t=(v-0.5)/0.5; r=lerp(34,255,t); g=lerp(209,209,t); b=lerp(170,102,t); }
+  return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+}
+function makeAAHeat(cols){
+  const div = document.getElementById('mpAAHeat'); if(!div) return;
+  div.innerHTML='';
+  const colCount = Math.max(cols.length, 1);
+  for(let r=0;r<AA.length;r++){
+    const row = document.createElement('div'); row.className='aaRow';
+    row.style.gridTemplateColumns = `20px ${'1fr '.repeat(colCount)}`.trim();
+    const lab = document.createElement('div'); lab.className='aaLbl'; lab.textContent = AA[r];
+    row.appendChild(lab);
+    for(let c=0;c<colCount;c++){
+      const cell = document.createElement('div'); cell.className='cell'; cell.style.background='rgba(255,255,255,.06)';
+      row.appendChild(cell);
+    }
+    div.appendChild(row);
+  }
+}
+function paintAAHeat(cols, probsByPos){
+  makeAAHeat(cols);
+  const div = document.getElementById('mpAAHeat'); const rows = [...div.children];
+  cols.forEach((pos, cIdx)=>{
+    const p = probsByPos[pos]; if(!p) return;
+    for(let r=0;r<AA.length;r++){
+      const row = rows[r]; const cell = row.children[1 + cIdx];
+      cell.style.background = heatColor(p[r]);
+    }
+  });
+}
+function burialAt(i){ return 0.5 + 0.5*Math.sin(i*0.35) * Math.cos(i*0.17); }
+function logitsFor(i){
+  const b = burialAt(i);
+  const hyd = new Set(['A','V','L','I','M','F','W','Y']);
+  const pol = new Set(['S','T','N','Q','C','G']);
+  const pos = new Set(['K','R','H']);
+  const neg = new Set(['D','E']);
+  return AA.map(a=>{
+    let logit = -1.0;
+    if(hyd.has(a)) logit += 2.2*b;
+    if(pol.has(a)) logit += 2.0*(1-b);
+    if(pos.has(a)) logit += 0.8*(1-b);
+    if(neg.has(a)) logit += 0.8*(1-b);
+    if(a==='P') logit -= 0.3;
+    return logit;
+  });
+}
+function softmaxLogits(logits, T=1.0){
+  const s = Math.max(...logits);
+  const exps = logits.map(v=>Math.exp((v - s)/T));
+  const Z = exps.reduce((a,b)=>a+b,0);
+  return exps.map(v=>v/Z);
+}
+function sample(probs){ let u=Math.random(), acc=0; for(let i=0;i<probs.length;i++){ acc+=probs[i]; if(u<=acc) return i; } return probs.length-1; }
+
+/* state + wiring */
+let mpMaskInfo, mpTempEl, mpTVal, mpStatusEl, mpSeqList, mpEmpty;
+let btnMaskA, btnMaskB, btnMaskClear, btnTour, btnResetView, btnQuick;
+function ensureS11(){
+  if(MP) return;
+  mpMaskInfo = document.getElementById('mpMaskInfo');
+  mpTempEl = document.getElementById('mpTemp'); mpTVal = document.getElementById('mpTval');
+  mpStatusEl = document.getElementById('mpStatus');
+  mpSeqList = document.getElementById('mpSeqList');
+  mpEmpty = document.getElementById('mpEmpty');
+  btnMaskA = document.getElementById('mpMaskA');
+  btnMaskB = document.getElementById('mpMaskB');
+  btnMaskClear = document.getElementById('mpMaskClear');
+  btnTour = document.getElementById('mpTour');
+  btnResetView = document.getElementById('mpResetView');
+  btnQuick = document.getElementById('mpQuick');
+
+  MP = createMPNNViewer({
+    canvasId:'mpnn3d', spinBtnId:'mpSpin', maskBtnId:'mpMask', snapBtnId:'mpSnap',
+    onMaskChange: (mask)=>{ mpMaskInfo.textContent = `Designable residues: ${mask.reduce((a,b)=>a+(b?1:0),0)}`; }
+  });
+
+  function applyMaskA(){ const idxs=[]; for(let a=8;a<=15;a++) idxs.push(a); for(let a=28;a<=36;a++) idxs.push(a); for(let a=45;a<=52;a++) idxs.push(a); MP.setMask(idxs); }
+  function applyMaskB(){ const idxs=[]; for(let a=12;a<=23;a++) idxs.push(a); for(let a=34;a<=40;a++) idxs.push(a); MP.setMask(idxs); }
+  btnMaskA.onclick = ()=>applyMaskA();
+  btnMaskB.onclick = ()=>applyMaskB();
+  btnMaskClear.onclick = ()=>MP.clearMask();
+  btnResetView.onclick = ()=>MP.resetView();
+  btnTour.onclick = ()=>MP.tourMask();
+  btnQuick.onclick = ()=> runDesignQuickHere();
+
+  mpTempEl.addEventListener('input', ()=>{ mpTVal.textContent=mpTempEl.value; });
+
+  applyMaskA();
+}
+function ensureS12(){
+  const div = document.getElementById('mpDistHeat'); if(!div) return;
+  div.innerHTML='';
+  const N = 24;
+  for(let r=0;r<N;r++){
+    const row = document.createElement('div'); row.className='cellsRow';
+    row.style.gridTemplateColumns = `repeat(${N}, 1fr)`;
+    for(let c=0;c<N;c++){
+      const cell = document.createElement('div'); cell.className='cell';
+      const d = Math.abs(r-c);
+      const v = Math.min(1, 0.25 + Math.exp(-Math.pow(d/3,2)) + 0.05*Math.random());
+      cell.style.background = heatColor(v);
+      row.appendChild(cell);
+    }
+    div.appendChild(row);
+  }
+}
+function ensureS13(){
+  const scan=document.getElementById('mpScan');
+  scan.classList.remove('animate'); void scan.offsetWidth; scan.classList.add('animate');
+  makeAAHeat([]);
+  document.getElementById('mpDesign').onclick = ()=> runDesignBatch();
+  mpStatusEl.textContent='';
+}
+function ensureS14(){
+  if(mpLastBatch && mpLastBatch.length){ renderBatch(mpLastBatch); mpEmpty.style.display='none'; }
+  else { mpEmpty.style.display='flex'; }
+}
+
+/* design + ranking */
+function runDesignOnce(){
+  const mask = MP.getMask(); const N = mask.length;
+  const seq = new Array(N).fill('A'); const probsByPos = {}; let score = 0;
+  for(let i=0;i<N;i++){
+    if(!mask[i]) continue;
+    const p = softmaxLogits(logitsFor(i), parseFloat(mpTempEl.value));
+    probsByPos[i] = p;
+    const idx = sample(p);
+    seq[i] = AA[idx];
+    score += Math.log(p[idx] + 1e-9);
+  }
+  return {seq: seq.join(''), score, probsByPos};
+}
+function renderBatch(batch){
+  batch.sort((a,b)=> b.score - a.score);
+  mpSeqList.innerHTML='';
+  batch.forEach((e,idx)=>{
+    const div = document.createElement('div'); div.className='seqItem'; div.dataset.idx=idx;
+    const score = (e.score).toFixed(2);
+    div.innerHTML = `<div class="meta">Score: <b>${score}</b></div>
+    <div class="seqmono">${decorateSeq(e.seq, MP.getMask())}</div>`;
+    div.onclick = ()=>{
+      document.querySelectorAll('.seqItem').forEach(x=>x.classList.remove('active'));
+      div.classList.add('active'); MP.colorBySequence(e.seq.split(''));
+    };
+    mpSeqList.appendChild(div);
+    if(idx===0){ div.click(); }
+  });
+}
+function decorateSeq(seq, mask){ return seq.split('').map((c,idx)=> mask[idx] ? `<span class="hl">${c}</span>` : c).join(''); }
+
+function runDesignBatch(){
+  const positions = MP.getMask().map((v,i)=>v?i:null).filter(x=>x!==null);
+  if(!positions.length){ mpStatusEl.textContent = "Select a design mask first (try Mask A/B)."; return; }
+  const scan=document.getElementById('mpScan');
+  scan.classList.remove('animate'); void scan.offsetWidth; scan.classList.add('animate');
+  mpStatusEl.textContent = "Designing 5…";
+  const K=5; const batch=[];
+  for(let k=0;k<K;k++){ const out = runDesignOnce(); batch.push(out); if(k===0){ paintAAHeat(positions.slice(0,14), out.probsByPos); } }
+  mpLastBatch = batch;
+  i = steps.indexOf('s14'); showStep(i);
+  renderBatch(batch); mpEmpty.style.display='none'; mpStatusEl.textContent = "Done.";
+}
+function runDesignQuickHere(){
+  const positions = MP.getMask().map((v,i)=>v?i:null).filter(x=>x!==null);
+  if(!positions.length){ document.getElementById('mpMaskA').click(); }
+  const K=5; const batch=[]; for(let k=0;k<K;k++) batch.push(runDesignOnce());
+  mpLastBatch = batch; renderBatch(batch); mpEmpty.style.display='none';
+}
+
+/* step runner */
+function showStep(idx){
+  timers.forEach(clearTimeout); timers=[];
+  document.querySelectorAll('.step').forEach(el=>el.classList.remove('active'));
+  const id=steps[idx]; const section=document.getElementById(id); if(!section) return;
+  section.classList.add('active');
+  dots.forEach((d,k)=>d.classList.toggle('active', k===idx));
+  updateCaption(id);
+  if(id==='s1') initS1();
+  if(id==='s2') initS2();
+  if(id==='s3') initS3();
+  if(id==='s5') initS5();
+  if(id==='s6') initS6();
+  if(id==='s8') ensureS8();
+  if(id==='s9') ensureS9();
+  if(id==='s10') ensureS10();
+  if(id==='s11') ensureS11();
+  if(id==='s12') ensureS12();
+  if(id==='s13') ensureS13();
+  if(id==='s14') ensureS14();
+}
+function next(){ i=Math.min(i+1, steps.length-1); showStep(i); }
+function prev(){ i=Math.max(i-1, 0); showStep(i); }
+function reset(){ playing=false; i=0; showStep(i); if(of2) of2.reset?.(); mpLastBatch=null; }
+
+document.getElementById('play').addEventListener('click', ()=>{ if(!playing){ playing=true; showStep(i); } });
+document.getElementById('pause').addEventListener('click', ()=>{ playing=false; timers.forEach(clearTimeout); timers=[]; });
+document.getElementById('stepFwd').addEventListener('click', ()=>{ playing=false; next(); });
+document.getElementById('stepBack').addEventListener('click', ()=>{ playing=false; prev(); });
+document.getElementById('reset').addEventListener('click', reset);
+document.getElementById('explainToggle').addEventListener('click', ()=> setExplainMode(!explainOn));
+
+document.getElementById('motifTour').addEventListener('click', () => {
+  if (i !== 5) { i = 5; showStep(i); }
+  if (of2?.tourMotifs) of2.tourMotifs();
+});
+
+/* start */
+showStep(0);
+setExplainMode(false);
+// ---------- Intro overlay wiring (minimal) ----------
+const intro = document.getElementById('intro');
+const openIntroBtn = document.getElementById('openIntro');
+const startBtn = document.getElementById('introStart');
+const skipIntroChk = document.getElementById('skipIntro');
+
+function showIntro(on=true){ intro?.classList.toggle('show', !!on); }
+
+// Show intro unless user opted to skip; ?intro=1 still forces it
+const params = new URLSearchParams(location.search);
+if (params.get('intro') === '1' || !localStorage.getItem('skipIntro')) showIntro(true);
+
+// Button to reopen intro from the header
+openIntroBtn?.addEventListener('click', ()=> showIntro(true));
+
+// Start → go to step 1
+startBtn?.addEventListener('click', ()=> { showIntro(false); i = 0; showStep(i); });
+
+// Footer Start (same behavior)
+document.getElementById('introStart1')?.addEventListener('click', ()=> { showIntro(false); i = 0; showStep(i); });
+
+// Remember preference
+skipIntroChk?.addEventListener('change', (e)=>{
+  if(e.target.checked) localStorage.setItem('skipIntro','1');
+  else localStorage.removeItem('skipIntro');
+});
+
+// Create and hook the forging intro
+const forge = createForgeIntro('forge');
+document.getElementById('forgePlay')?.addEventListener('click', forge.play);
+document.getElementById('forgeReplay')?.addEventListener('click', forge.replay);
+
+
+
+
+</script>
+</body>
+</html>

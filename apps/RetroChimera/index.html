@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RetroChimera • Chemist-Aligned Retrosynthesis (Demo)</title>
+<style>
+:root{
+  --bg:#090614; --bg2:#130d29; --ink:#f7f8ff; --muted:#c4c7de;
+  --violet:#a189ff; --aqua:#22e1ff; --pink:#ff9ecd; --amber:#ffd166;
+  --border:rgba(255,255,255,.14); --shadow:0 20px 50px rgba(0,0,0,.45);
+  --radius:18px; --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  --sans: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Noto Sans","Helvetica Neue",Arial;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; color:var(--ink); font-family:var(--sans);
+  background: radial-gradient(1200px 800px at 8% -10%, #2a1b68, transparent 60%),
+              radial-gradient(1200px 800px at 110% 10%, #0a3a64, transparent 50%),
+              linear-gradient(160deg, var(--bg2), var(--bg));
+}
+.frame{max-width:1200px; margin:42px auto; padding:0 20px}
+.hero{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap}
+h1{margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; background:linear-gradient(90deg, var(--aqua), var(--violet), var(--pink)); -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:0 0 20px rgba(155,137,255,.35)}
+.sub{color:var(--muted); font-size:14px}
+.controls{display:flex; gap:10px; flex-wrap:wrap}
+button{ background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); color:var(--ink); border:1px solid var(--border); padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer; box-shadow:var(--shadow); backdrop-filter:blur(8px); transition:.2s transform,.25s filter,.25s box-shadow}
+button:hover{filter:brightness(1.15); box-shadow:0 12px 24px rgba(155,137,255,.25)}
+button:active{transform:translateY(1px)}
+.stage{position:relative; min-height:760px; padding:22px; border-radius:var(--radius); border:1px solid var(--border); background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); box-shadow:var(--shadow); overflow:hidden; backdrop-filter:blur(10px)}
+.grid{position:absolute; inset:-20px; background: repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 80px), repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 80px); mask-image: radial-gradient(1200px 600px at 70% 30%, #000 35%, transparent 70%); pointer-events:none}
+.step{position:relative; display:none; animation:fadeIn .4s ease both; padding-bottom:110px}
+.step.active{display:block}
+@keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+.badge{display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.06); border:1px solid var(--border); padding:8px 12px; border-radius:999px; font-size:12px; color:var(--muted); backdrop-filter:blur(6px)}
+.badge .dot{width:8px; height:8px; border-radius:50%; background:var(--aqua); box-shadow:0 0 12px var(--aqua)}
+.stepContent{display:grid; grid-template-columns: 1.4fr 1fr; gap:18px; align-items:start; margin-top:14px}
+.coach{background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:12px; padding:12px; backdrop-filter:blur(8px); font-size:13px; color:var(--muted); box-shadow:var(--shadow)}
+.coach h4{margin:0 0 6px 0; font-size:14px; color:#fff}
+.hidden{display:none}
+.kbd{background:rgba(255,255,255,.07); border:1px solid var(--border); border-bottom-width:2px; padding:2px 6px; border-radius:6px; font-weight:800}
+.cards{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+.card{background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:16px; padding:16px; backdrop-filter: blur(8px)}
+.card h3{margin:0 0 6px 0; font-size:16px}
+.meta{color:var(--muted); font-size:12px}
+.flex{display:flex; gap:10px; align-items:center}
+input[type="text"]{width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,.06); color:var(--ink); font-family:var(--mono)}
+.table{width:100%; border-collapse:collapse; font-size:13px}
+.table th,.table td{border-bottom:1px solid var(--border); padding:8px 6px; text-align:left}
+.table th{color:#e8e9ff; font-weight:800}
+.rank{font-weight:900}
+
+/* Step 2/3 layout with larger preview */
+.cards.previewGrid{grid-template-columns:1.6fr 1fr; align-items:start}
+.stack{display:grid; gap:14px}
+
+/* 3D containers */
+.glwrap{position:relative; height:420px; border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.15)}
+.glwrap.mini{height:320px}
+#chem3d,#chem3d_s2,#chem3d_s3,#ensemble3d{position:absolute; inset:0; width:100%; height:100%; display:block}
+.captionbar{position:absolute; left:0; right:0; bottom:0; padding:12px 18px; background:rgba(10,7,22,.55); border-top:1px solid rgba(255,255,255,.12); backdrop-filter: blur(8px); font-size:14px}
+
+/* Step 5 overlays */
+.glwrap .tip{position:absolute; pointer-events:none; padding:6px 8px; font-size:12px; border-radius:8px; background:rgba(10,7,22,.72); border:1px solid rgba(255,255,255,.15); transform:translate(8px,-8px); white-space:nowrap}
+.glwrap .tip.hidden{display:none}
+.glwrap .legend{position:absolute; right:10px; top:10px; display:flex; align-items:center; gap:8px; font-size:12px; color:#cfe3ff; background:rgba(10,7,22,.65); border:1px solid rgba(255,255,255,.14); border-radius:999px; padding:6px 10px}
+.glwrap .legend .bar{width:96px; height:8px; border-radius:999px; background:linear-gradient(90deg, #a189ff, #22e1ff); border:1px solid rgba(255,255,255,.18)}
+
+.progress{display:flex; gap:6px; align-items:center; justify-content:center; margin-top:14px}
+.pdot{width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.08); border:1px solid var(--border)}
+.pdot.active{background: radial-gradient(circle at 50% 40%, var(--aqua), var(--violet)); box-shadow:0 0 14px var(--aqua)}
+.footer{margin-top:10px; color:var(--muted); font-size:12px}
+
+@media (max-width:980px){
+  .stepContent{grid-template-columns:1fr}
+  .cards{grid-template-columns:1fr}
+  .cards.previewGrid{grid-template-columns:1fr}
+}
+</style>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="frame">
+  <div class="hero">
+    <div>
+      <h1>RetroChimera - Chemist-Aligned Retrosynthesis</h1>
+      <div class="sub">Two complementary models → Learned ensemble → Stronger single-step predictions for synthesis planning</div>
+    </div>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="pause">⏸ Pause</button>
+      <button id="stepBack">⟵ Prev</button>
+      <button id="stepFwd">Next ⟶</button>
+      <button id="reset">↺ Reset</button>
+      <button id="explainToggle">💬 Explain Mode: ON</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="grid"></div>
+
+    <!-- STEP 1 -->
+    <section class="step active" id="s1" aria-label="Step 1">
+      <span class="badge"><span class="dot"></span> Step 1 — Target molecule (input)</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>SMILES (example)</h3>
+            <div class="flex"><input id="smiles" type="text" value="CC(=O)OC1=CC=CC=C1C(=O)O" /> <button id="smilesApply">Apply</button></div>
+            <div class="meta">Example: Aspirin (demo-only visualization)</div>
+          </div>
+          <div class="card">
+            <h3>Stylized 3D molecule</h3>
+            <div class="glwrap"><canvas id="chem3d"></canvas></div>
+            <div class="meta">Nodes ≈ atoms • Cylinders ≈ bonds • Glowing bond = candidate disconnection</div>
+          </div>
+        </div>
+        <aside class="coach" id="coach1">
+          <h4>What’s the task?</h4>
+          <ul>
+            <li>Single-step <b>retrosynthesis</b>: propose reactants that could produce the input product.</li>
+            <li>Multi-step planners chain these steps; accuracy here defines the search space.</li>
+            <li>Rare yet strategic reactions matter; hallucinations hurt. We’ll counter both with an ensemble.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section class="step" id="s2" aria-label="Step 2">
+      <span class="badge"><span class="dot"></span> Step 2 — NeuralLoc (edit/template model)</span>
+      <div class="stepContent">
+        <div class="cards previewGrid">
+          <div class="stack">
+            <div class="card">
+              <h3>Top-5 predictions</h3>
+              <table class="table" id="neuralLocTable"></table>
+            </div>
+            <div class="card">
+              <h3>Disconnections on 3D (preview)</h3>
+              <div class="glwrap mini"><canvas id="chem3d_s2"></canvas></div>
+              <div class="meta">Click a row to highlight the bond here and in the main 3D.</div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Idea</h3>
+            <div class="meta">GNN encodes product + reaction templates → picks a template → localizes where to apply it → yields reactants efficiently.</div>
+          </div>
+        </div>
+        <aside class="coach" id="coach2">
+          <h4>Why this is useful</h4>
+          <ul>
+            <li>Fast and precise when a suitable template exists.</li>
+            <li>Also predicts <i>where</i> to apply it (localization).</li>
+            <li>But can miss off-template or very rare reactions.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section class="step" id="s3" aria-label="Step 3">
+      <span class="badge"><span class="dot"></span> Step 3 — R-SMILES 2 (de-novo generator)</span>
+      <div class="stepContent">
+        <div class="cards previewGrid">
+          <div class="stack">
+            <div class="card">
+              <h3>Top-5 predictions</h3>
+              <table class="table" id="rsmilesTable"></table>
+            </div>
+            <div class="card">
+              <h3>Disconnections on 3D (preview)</h3>
+              <div class="glwrap mini"><canvas id="chem3d_s3"></canvas></div>
+              <div class="meta">Click a row to highlight the bond here and in the main 3D.</div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Idea</h3>
+            <div class="meta">Transformer generates reactants from scratch; tends to generalize better far from training data.</div>
+          </div>
+        </div>
+        <aside class="coach" id="coach3">
+          <h4>Why this is useful</h4>
+          <ul>
+            <li>Not limited by an explicit template library.</li>
+            <li>Can propose creative or rare disconnections.</li>
+            <li>But may hallucinate implausible chemistry.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 4 -->
+    <section class="step" id="s4" aria-label="Step 4">
+      <span class="badge"><span class="dot"></span> Step 4 — RetroChimera (learned ensemble)</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>Weights over ranks (demo)</h3>
+            <div class="meta">Move sliders to change per-model weight. Rank weights ↓ with rank (1/log2 style).</div>
+            <div class="flex"><label>NeuralLoc&nbsp;<b id="wARead">0.50</b></label><input id="wA" type="range" min="0" max="1" step="0.01" value="0.5"/></div>
+            <div class="flex"><label>R-SMILES 2&nbsp;<b id="wBRead">0.50</b></label><input id="wB" type="range" min="0" max="1" step="0.01" value="0.5"/></div>
+          </div>
+          <div class="card">
+            <h3>Fused ranking (consensus)</h3>
+            <table class="table" id="ensembleTable"></table>
+          </div>
+          <div class="card">
+            <h3>What’s happening?</h3>
+            <div class="meta">We aggregate identical reactant sets across lists, then score with <code>score = wA·f(rankA) + wB·f(rankB)</code> (lower rank → higher weight).</div>
+          </div>
+        </div>
+        <aside class="coach" id="coach4">
+          <h4>Why this helps</h4>
+          <ul>
+            <li>Down-weights errors unique to one model.</li>
+            <li>Up-weights agreements and complementary strengths.</li>
+            <li>Makes multi-step search find more valid routes.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 5 -->
+    <section class="step" id="s5" aria-label="Step 5">
+      <span class="badge"><span class="dot"></span> Step 5 — 3D view of consensus</span>
+      <div class="stepContent">
+        <div>
+          <div class="card">
+            <h3>Interactive 3D: (rankA, rankB, score)</h3>
+            <div class="flex" style="margin:6px 0 10px 0">
+              <button id="spinBtn">⟳ Toggle Spin</button>
+              <button id="snapBtn">📸 Snapshot PNG</button>
+            </div>
+            <div class="glwrap" id="s5wrap">
+              <canvas id="ensemble3d"></canvas>
+              <div class="legend"><span>lower</span><div class="bar"></div><span>higher</span></div>
+              <div id="s5-tip" class="tip hidden"></div>
+            </div>
+            <div class="meta">X = rank in NeuralLoc • Y = rank in R-SMILES 2 • Z/Color/Size = ensemble score (higher → better).</div>
+          </div>
+        </div>
+        <aside class="coach" id="coach5">
+          <h4>How to read</h4>
+          <ul>
+            <li>Top-right = poor (high ranks). Bottom-left = strong agreement.</li>
+            <li>Drag to orbit. Use the sliders in Step 4 to see points move along Z/size/color.</li>
+            <li>Hover a point for details; click to lock the highlight.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 6 -->
+    <section class="step" id="s6" aria-label="Step 6">
+      <span class="badge"><span class="dot"></span> Step 6 — Why it matters</span>
+      <div class="stepContent">
+        <div>
+          <div class="cards">
+            <div class="card"><h3>Accuracy</h3><div class="meta">State-of-the-art single-step accuracy via learned ensembling across complementary models.</div></div>
+            <div class="card"><h3>Robustness</h3><div class="meta">Chemist-aligned: fewer brittle failures; better time-split & out-of-domain behavior.</div></div>
+            <div class="card"><h3>Cost</h3><div class="meta">Edit model is efficient; ensembling adds little overhead for sizable gains.</div></div>
+          </div>
+        </div>
+        <aside class="coach" id="coach6">
+          <h4>Use in a talk</h4>
+          <ul>
+            <li>Two minds → one consensus (Steps 2–4).</li>
+            <li>Show control: adjust weights and watch Step-5 move.</li>
+            <li>End with the consensus 3D and these takeaways.</li>
+          </ul>
+        </aside>
+      </div>
+      <div class="captionbar" id="caption"></div>
+    </section>
+  </div>
+
+  <div class="progress" aria-label="progress">
+    <div class="pdot active" data-dot="1"></div>
+    <div class="pdot" data-dot="2"></div>
+    <div class="pdot" data-dot="3"></div>
+    <div class="pdot" data-dot="4"></div>
+    <div class="pdot" data-dot="5"></div>
+    <div class="pdot" data-dot="6"></div>
+  </div>
+  <div class="footer">Paper: arXiv:2412.05269. This demo is illustrative (no cheminformatics engine). Paste any SMILES to keep the narrative consistent.</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/************* Data *************/
+const CANDIDATES = [
+  { id:'A', label:'Ester cleavage → salicylic acid + acetic anhydride', bond:[2,3] },
+  { id:'B', label:'Transesterification variant', bond:[6,7] },
+  { id:'C', label:'Hydrolysis (acidic pathway)', bond:[10,11] },
+  { id:'D', label:'Base-catalyzed hydrolysis', bond:[12,13] },
+  { id:'E', label:'Uncommon rearrangement (risky)', bond:[4,5] },
+];
+const NeuralLocRanks = {A:1,B:3,C:2,D:4,E:5};
+const RSmilesRanks    = {C:1,A:2,E:3,D:4,B:5};
+
+/************* Steps *************/
+const steps=["s1","s2","s3","s4","s5","s6"];
+let i=0, playing=false; let timers=[]; let explainOn=true;
+const dots=[...document.querySelectorAll('[data-dot]')];
+const CAPTION={
+  s1:'Goal: propose reactants for a product. We will compare two model families.',
+  s2:'NeuralLoc (edit) picks a template and where to apply it → fast, precise.',
+  s3:'R-SMILES 2 (de-novo) generates reactants → creative, broader generalization.',
+  s4:'RetroChimera fuses lists using learned rank weights. Try the sliders.',
+  s5:'3D: each point is a candidate. Z/size/color rise as consensus improves.',
+  s6:'Takeaway: diverse models + learned ensembling → accuracy and robustness.'
+};
+function setExplainMode(on){
+  explainOn=on; document.getElementById('explainToggle').textContent = on ? '💬 Explain Mode: ON' : '💬 Explain Mode: OFF';
+  document.querySelectorAll('.coach').forEach(el=>el.classList.toggle('hidden', !on));
+}
+function showStep(idx){
+  timers.forEach(t=>clearTimeout(t)); timers=[];
+  document.querySelectorAll('.step').forEach(el=>el.classList.remove('active'));
+  const id=steps[idx]; document.getElementById(id).classList.add('active');
+  dots.forEach((d,k)=>d.classList.toggle('active', k===idx));
+  const cap=document.getElementById('caption'); if(cap) cap.textContent = CAPTION[id]||'';
+
+  if(id==='s2') renderTable('neuralLocTable', NeuralLocRanks);
+  if(id==='s3') renderTable('rsmilesTable', RSmilesRanks);
+  if(id==='s4'){ updateWeightsUI(); recomputeEnsemble(); }
+  if(id==='s5'){ ensure3DScatter(); }
+
+  // ensure newly-shown canvases size correctly
+  setTimeout(()=>{ chem3d.resize(); chem3d_s2.resize(); chem3d_s3.resize(); if (ens3d && ens3d.resize) ens3d.resize(); }, 50);
+
+  setExplainMode(explainOn);
+}
+function next(){ i=Math.min(i+1, steps.length-1); showStep(i); }
+function prev(){ i=Math.max(i-1, 0); showStep(i); }
+function reset(){ playing=false; i=0; showStep(i); }
+
+/************* Molecule viewers *************/
+function createMoleculeViewer({canvasId, mini=false}){
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = mini ? 1.05 : 1.2;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x0a0716, 0.018);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set( mini ? 0 : 0, mini ? 0.8 : 1.2, mini ? 7.2 : 8.5 );
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.minDistance = 3;
+  controls.maxDistance = 18;
+
+  scene.add(new THREE.HemisphereLight(0xbfd3ff, 0x0b1022, 0.8));
+  const key = new THREE.DirectionalLight(0xffffff, 1.05); key.position.set(3,4,2); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x88ccff, 0.6); rim.position.set(-3,-2,-4); scene.add(rim);
+
+  const group = new THREE.Group(); scene.add(group);
+
+  const N = 16, R = 3.0;
+  const nodes = [], edges = [];
+  for (let k=0;k<N;k++){
+    const a=(k/N)*Math.PI*2;
+    nodes.push(new THREE.Vector3(Math.cos(a)*R, Math.sin(a)*R, 0.22*Math.sin(2*a)));
+  }
+  nodes.push(new THREE.Vector3(R*1.35, 0.2, 0.6)); // 16
+  edges.push([0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],
+             [8,9],[9,10],[10,11],[11,12],[12,13],[13,14],[14,15],[15,0],
+             [2,16]);
+
+  const atomMat = new THREE.MeshStandardMaterial({ color:0xE3E9FF, metalness:0.2, roughness:0.35 });
+  const fresnelMat = new THREE.ShaderMaterial({
+    uniforms:{ rimColor:{value:new THREE.Color(0x9bb4ff)}, rimPower:{value:2.2} },
+    vertexShader: `
+      uniform float rimPower;
+      varying float vF;
+      void main(){
+        vec3 n = normalize(normalMatrix * normal);
+        vec3 v = normalize((modelViewMatrix * vec4(position,1.0)).xyz);
+        vF = pow(1.0 - abs(dot(n, v)), rimPower);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }`,
+    fragmentShader: `
+      precision mediump float;
+      uniform vec3 rimColor; varying float vF;
+      void main(){ gl_FragColor = vec4(rimColor, 0.55 * vF); }`,
+    transparent:true, blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const bondMat  = new THREE.MeshStandardMaterial({ color:0x90a5ff, metalness:0.25, roughness:0.35 });
+  const hiBondMat= new THREE.MeshStandardMaterial({ color:0xff9ecd, emissive:0xff5599, emissiveIntensity:1.6, metalness:0.1, roughness:0.25 });
+
+  const atomGeo = new THREE.SphereGeometry(0.22, 28, 20);
+  nodes.forEach(p=>{
+    const core=new THREE.Mesh(atomGeo, atomMat.clone()); core.position.copy(p);
+    const rimShell=new THREE.Mesh(atomGeo, fresnelMat.clone()); rimShell.scale.setScalar(1.16);
+    core.add(rimShell); group.add(core);
+  });
+
+  const bonds=[];
+  function cylinderBetween(a,b,r=0.07){
+    const dir=new THREE.Vector3().subVectors(b,a);
+    const len=dir.length();
+    const g=new THREE.CylinderGeometry(r,r,len,20,1,true);
+    const m=new THREE.Mesh(g, bondMat.clone());
+    m.position.copy(new THREE.Vector3().addVectors(a,b).multiplyScalar(0.5));
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+    return m;
+  }
+  edges.forEach(([ia,ib])=>{
+    const mesh=cylinderBetween(nodes[ia], nodes[ib], 0.075);
+    mesh.userData={a:ia,b:ib,base:mesh.material}; group.add(mesh); bonds.push(mesh);
+  });
+
+  // sparkles
+  const pts = new Float32Array((mini?120:200)*3);
+  for(let k=0;k<pts.length/3;k++){
+    const rr = R + 0.6 + Math.random()*1.2;
+    const ang = Math.random()*Math.PI*2;
+    pts[3*k]=Math.cos(ang)*rr; pts[3*k+1]=Math.sin(ang)*rr; pts[3*k+2]=(Math.random()-0.5)*1.6;
+  }
+  const sparkle = new THREE.Points(
+    new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pts,3)),
+    new THREE.PointsMaterial({ size:0.03, transparent:true, opacity:0.8, depthWrite:false })
+  );
+  group.add(sparkle);
+
+  // halo flash
+  const haloCanvas=document.createElement('canvas'); haloCanvas.width=haloCanvas.height=128;
+  const g=haloCanvas.getContext('2d'); const grd=g.createRadialGradient(64,64,6,64,64,64);
+  grd.addColorStop(0,'rgba(255,158,205,0.95)'); grd.addColorStop(1,'rgba(255,158,205,0)');
+  g.fillStyle=grd; g.fillRect(0,0,128,128);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(haloCanvas), transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0}));
+  group.add(halo); let haloAnim=null;
+
+  function flyTo(targetVec, ms=mini?400:650){
+    const startT=controls.target.clone(), startP=camera.position.clone();
+    const dir=startP.clone().sub(startT);
+    const endT=targetVec.clone(), endP=targetVec.clone().add(dir);
+    const t0=performance.now(); (function step(now){
+      const u=Math.min(1,(now-t0)/ms), e=u*(2-u);
+      controls.target.lerpVectors(startT,endT,e); camera.position.lerpVectors(startP,endP,e);
+      if(u<1) requestAnimationFrame(step);
+    })(performance.now());
+  }
+
+  let pulse={ t:0, mesh:null };
+  function setGlowBond(idxA, idxB){
+    bonds.forEach(b=>{ b.material=b.userData.base; b.scale.set(1,1,1); });
+    pulse.mesh=null;
+    const hit=bonds.find(b=> (b.userData.a===idxA && b.userData.b===idxB) || (b.userData.a===idxB && b.userData.b===idxA) );
+    if(hit){
+      hit.material = hiBondMat; pulse.mesh=hit; pulse.t=0;
+      const mid = new THREE.Vector3().addVectors(nodes[idxA], nodes[idxB]).multiplyScalar(0.5);
+      halo.position.copy(mid); halo.scale.set(1.6,1.6,1); halo.material.opacity=0.95; haloAnim={t:0};
+      flyTo(mid);
+    }
+  }
+
+  function resize(){
+    const p=renderer.domElement.parentElement.getBoundingClientRect();
+    renderer.setSize(p.width,p.height,false); camera.aspect=p.width/p.height; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize, {passive:true}); resize();
+
+  let a=0;
+  (function anim(){
+    requestAnimationFrame(anim);
+    a+=0.003; group.rotation.y=a; controls.update();
+    sparkle.material.opacity = 0.6 + 0.3*Math.sin(a*2.1);
+    if(pulse.mesh){ pulse.t+=0.06; const s=1+0.08*Math.sin(pulse.t); pulse.mesh.scale.set(1,s,1); pulse.mesh.material.emissiveIntensity=1.3+0.6*Math.max(0,Math.sin(pulse.t)); }
+    if(haloAnim){ haloAnim.t+=0.05; const k=Math.min(1,haloAnim.t); halo.scale.setScalar(1.6+0.9*k); halo.material.opacity=0.95*(1-k); if(k>=1){ halo.material.opacity=0; haloAnim=null; } }
+    renderer.render(scene,camera);
+  })();
+
+  return { setCut:(a,b)=>setGlowBond(a,b), resize };
+}
+
+/************* Instantiate viewers *************/
+const chem3d    = createMoleculeViewer({canvasId:'chem3d'});
+const chem3d_s2 = createMoleculeViewer({canvasId:'chem3d_s2', mini:true});
+const chem3d_s3 = createMoleculeViewer({canvasId:'chem3d_s3', mini:true});
+
+/************* SMILES mapping (cosmetic) *************/
+function pickBondIndexFromSmiles(s){
+  let h=0>>>0; for(let i=0;i<s.length;i++) h=(h*131 + s.charCodeAt(i))>>>0;
+  const a=h%16; return [a,(a+1)%16];
+}
+document.getElementById('smilesApply').onclick=()=>{
+  const s=document.getElementById('smiles').value.trim();
+  const [a,b]=pickBondIndexFromSmiles(s);
+  [chem3d,chem3d_s2,chem3d_s3].forEach(v=>v.setCut(a,b));
+};
+
+/************* Tables (click -> update all viewers) *************/
+function renderTable(id, ranks){
+  const el=document.getElementById(id);
+  const rows = Object.keys(ranks).sort((a,b)=>ranks[a]-ranks[b]).map(k=>{
+    const c=CANDIDATES.find(x=>x.id===k); return `<tr data-id="${k}"><td class="rank">${ranks[k]}</td><td><b>${k}</b></td><td>${c.label}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<tr><th>Rank</th><th>ID</th><th>Reactant set (label)</th></tr>${rows}`;
+  el.querySelectorAll('tr[data-id]').forEach(tr=>{
+    tr.addEventListener('click',()=>{
+      const id=tr.getAttribute('data-id');
+      const c=CANDIDATES.find(x=>x.id===id);
+      if(c && c.bond){ const [a,b]=c.bond; [chem3d,chem3d_s2,chem3d_s3].forEach(v=>v.setCut(a,b)); }
+      highlightPoint(id);
+    });
+    tr.addEventListener('mouseenter',()=>highlightPoint(tr.getAttribute('data-id')));
+  });
+}
+
+/************* Ensemble scoring + Step 5 *************/
+const wAEl=document.getElementById('wA'); const wBEl=document.getElementById('wB');
+function updateWeightsUI(){ document.getElementById('wARead').textContent=(+wAEl.value).toFixed(2); document.getElementById('wBRead').textContent=(+wBEl.value).toFixed(2); }
+[wAEl,wBEl].forEach(x=>x.addEventListener('input',()=>{ const s=+wAEl.value + +wBEl.value; if(s===0){ wAEl.value=0.5; wBEl.value=0.5; } updateWeightsUI(); recomputeEnsemble(); updateScatterZ(); }));
+function f(rank){ return 1/Math.log2(rank+1.00001); }
+function recomputeEnsemble(){
+  const wA=+wAEl.value, wB=+wBEl.value; const map=new Map();
+  CANDIDATES.forEach(c=>{
+    const a=NeuralLocRanks[c.id]??999, b=RSmilesRanks[c.id]??999;
+    const score=(wA*f(a)) + (wB*f(b));
+    map.set(c.id,{id:c.id,a,b,score,label:c.label});
+  });
+  const arr=[...map.values()].sort((x,y)=>y.score-x.score);
+  const rows = arr.map((r,idx)=>`<tr data-id="${r.id}"><td class="rank">${idx+1}</td><td><b>${r.id}</b></td><td>${r.label}</td><td>${r.a}</td><td>${r.b}</td><td>${r.score.toFixed(3)}</td></tr>`).join('');
+  document.getElementById('ensembleTable').innerHTML = `<tr><th>Ensemble rank</th><th>ID</th><th>Reactant set</th><th>Rank A</th><th>Rank B</th><th>Score</th></tr>${rows}`;
+  document.querySelectorAll('#ensembleTable tr[data-id]').forEach(tr=>{
+    tr.addEventListener('mouseenter',()=>highlightPoint(tr.getAttribute('data-id')));
+  });
+}
+
+/*** Step-5 3D scatter (color+size by score, grids, tooltip, picking) ***/
+let ens3d; let pointById=new Map(); let raycaster, mouse, hovered=null, locked=null;
+function ensure3DScatter(){ if(ens3d) return; ens3d=createScatter(); updateScatterZ(); }
+function createScatter(){
+  const canvas=document.getElementById('ensemble3d');
+  const wrapper=document.getElementById('s5wrap');
+  const tip=document.getElementById('s5-tip');
+
+  const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  const scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x0a0716, 0.018);
+  const camera=new THREE.PerspectiveCamera(45,1,0.1,100); camera.position.set(8,7,12);
+  const controls=new OrbitControls(camera, renderer.domElement); controls.enableDamping=true; controls.dampingFactor=0.06; controls.minDistance=4; controls.maxDistance=30;
+  scene.add(new THREE.AmbientLight(0xffffff,0.6)); const d=new THREE.DirectionalLight(0xffffff,1.1); d.position.set(3,4,2); scene.add(d);
+  const group=new THREE.Group(); scene.add(group);
+
+  // Wireframe cube
+  const axes=new THREE.Group(); group.add(axes);
+  const boxGeo=new THREE.BoxGeometry(5,5,1); const boxMat=new THREE.MeshBasicMaterial({wireframe:true, color:0x6a7cff});
+  const boxMesh=new THREE.Mesh(boxGeo,boxMat); boxMesh.position.set(2.5,2.5,0.5); axes.add(boxMesh);
+
+  // Subtle grids for depth perception (XY at z=0, XZ at y=0, YZ at x=0)
+  const gxy=new THREE.GridHelper(5,5,0x6a7cff,0x6a7cff); gxy.material.opacity=0.15; gxy.material.transparent=true; gxy.rotateX(Math.PI/2); gxy.position.set(2.5,2.5,0); axes.add(gxy);
+  const gxz=new THREE.GridHelper(5,5,0x6a7cff,0x6a7cff); gxz.material.opacity=0.10; gxz.material.transparent=true; gxz.position.set(2.5,0,0.5); axes.add(gxz);
+  const gyz=new THREE.GridHelper(5,5,0x6a7cff,0x6a7cff); gyz.material.opacity=0.10; gyz.material.transparent=true; gyz.rotateZ(Math.PI/2); gyz.position.set(0,2.5,0.5); axes.add(gyz);
+
+  // Axis tick labels (1..5)
+  function tickSprite(text){
+    const size=128; const cvs=document.createElement('canvas'); cvs.width=cvs.height=size; const ctx=cvs.getContext('2d');
+    ctx.fillStyle='rgba(0,0,0,0)'; ctx.fillRect(0,0,size,size);
+    ctx.fillStyle='#cfe3ff'; ctx.font='bold 56px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.lineWidth=6; ctx.strokeText(text, size/2, size/2); ctx.fillText(text, size/2, size/2);
+    const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cvs), transparent:true}));
+    spr.scale.set(0.45,0.25,1); return spr;
+  }
+  for(let k=1;k<=5;k++){ const tx=tickSprite(k); tx.position.set(k,0,-0.05); axes.add(tx); const ty=tickSprite(k); ty.position.set(0,k,-0.05); axes.add(ty); }
+
+  // Points and stems
+  const pGeo=new THREE.SphereGeometry(0.18,18,14);
+  CANDIDATES.forEach(c=>{
+    const a=NeuralLocRanks[c.id], b=RSmilesRanks[c.id];
+    const mat=new THREE.MeshPhongMaterial({color:0x22e1ff, emissive:0x0b4060, shininess:60});
+    const p=new THREE.Mesh(pGeo, mat);
+    p.position.set(a, b, 0.3);
+    p.userData={id:c.id,a,b,score:0};
+    group.add(p); pointById.set(c.id,p);
+
+    // stem from z=0 plane
+    const stemGeo=new THREE.BufferGeometry().setFromPoints([ new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1) ]);
+    const stem=new THREE.Line(stemGeo, new THREE.LineBasicMaterial({color:0x7aa7ff, transparent:true, opacity:0.6}));
+    stem.position.set(a,b,0); group.add(stem); p.userData.stem=stem;
+
+    // floating label (ID)
+    const size=128; const cvs=document.createElement('canvas'); cvs.width=cvs.height=size; const ctx=cvs.getContext('2d');
+    ctx.fillStyle='rgba(0,0,0,0)'; ctx.fillRect(0,0,size,size);
+    ctx.fillStyle='#ffffff'; ctx.font='bold 64px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=6; ctx.strokeText(c.id, size/2, size/2); ctx.fillText(c.id, size/2, size/2);
+    const label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cvs)})); label.scale.set(0.9,0.45,1); p.add(label); label.position.set(0,0,0.6);
+  });
+
+  // picking
+  raycaster = new THREE.Raycaster();
+  mouse = new THREE.Vector2();
+  function onMove(ev){
+    const r=canvas.getBoundingClientRect();
+    mouse.x=((ev.clientX - r.left)/r.width)*2-1;
+    mouse.y=-((ev.clientY - r.top)/r.height)*2+1;
+  }
+  function setTip(html,x,y){ tip.innerHTML=html; tip.style.left=`${x}px`; tip.style.top=`${y}px`; tip.classList.remove('hidden'); }
+  function hideTip(){ tip.classList.add('hidden'); }
+  canvas.addEventListener('mousemove', (e)=>{ onMove(e); wrapper.style.cursor='default'; });
+  canvas.addEventListener('mouseleave', ()=>{ hovered=null; hideTip(); });
+
+  canvas.addEventListener('click', ()=>{ locked = hovered ? hovered.userData.id : null; });
+
+  function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+
+    // hover test (raycast against spheres)
+    raycaster.setFromCamera(mouse, camera);
+    const intersect = raycaster.intersectObjects(Array.from(pointById.values()), false)[0];
+    hovered = intersect ? intersect.object : null;
+
+    // visuals: reset
+    pointById.forEach(p=>{
+      p.material.emissiveIntensity = (locked && p.userData.id===locked) ? 1.8 : 0.6;
+    });
+
+    // show tooltip & pointer
+    if(hovered){
+      wrapper.style.cursor='pointer';
+      const {id,a,b,score} = hovered.userData;
+      const s = score.toFixed(3);
+      setTip(`<b>${id}</b>&nbsp;&nbsp;A:${a}  B:${b}  ·  score:${s}`, (mouse.x*0.5+0.5)*canvas.clientWidth, (-mouse.y*0.5+0.5)*canvas.clientHeight);
+    } else {
+      hideTip();
+    }
+
+    renderer.render(scene,camera);
+  }
+  animate();
+
+  function resize(){
+    const p=renderer.domElement.parentElement.getBoundingClientRect();
+    renderer.setSize(p.width,p.height,false); camera.aspect=p.width/p.height; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize, {passive:true}); resize();
+
+  // UI buttons
+  let spin=true; document.getElementById('spinBtn').onclick=()=>{ spin=!spin; };
+  document.getElementById('snapBtn').onclick=()=>{ const prev=scene.background; scene.background=new THREE.Color(0x0a0716); renderer.render(scene,camera); const a=document.createElement('a'); a.href=renderer.domElement.toDataURL('image/png'); a.download='retrochimera_scatter.png'; a.click(); scene.background=prev; };
+  (function slowSpin(){ requestAnimationFrame(slowSpin); if(spin){ group.rotation.y+=0.003; } })();
+
+  return { group, scene, camera, resize };
+}
+function colorFor(z01){
+  // 0 → violet (#a189ff), 1 → aqua (#22e1ff)
+  const c0=new THREE.Color(0xa189ff), c1=new THREE.Color(0x22e1ff);
+  return c0.clone().lerp(c1, THREE.MathUtils.clamp(z01,0,1));
+}
+function updateScatterZ(){
+  if(!ens3d) return;
+  const wA=+wAEl.value, wB=+wBEl.value;
+  // get min/max for normalization
+  let min=Infinity, max=-Infinity;
+  pointById.forEach(p=>{
+    const s=(wA*f(p.userData.a)+wB*f(p.userData.b));
+    p.userData.score=s; min=Math.min(min,s); max=Math.max(max,s);
+  });
+  const span=Math.max(1e-6, max-min);
+  pointById.forEach(p=>{
+    const zn=(p.userData.score - min)/span;           // 0..1
+    const z=0.15 + zn*(0.85);                         // 0.15..1.0 inside unit depth
+    p.position.z = z;
+    p.scale.setScalar(0.75 + 0.75*zn);                // size by score
+    p.material.color = colorFor(zn);                  // color by score
+    if(p.userData.stem) p.userData.stem.scale.set(1,1,z);
+  });
+}
+function highlightPoint(id){
+  const p = pointById.get(id); if(!p) return;
+  pointById.forEach(x=>x.material.emissiveIntensity=0.6);
+  p.material.emissiveIntensity=1.6;
+}
+
+/************* Controls + init *************/
+document.getElementById('play').addEventListener('click',()=>{ if(!playing){ playing=true; showStep(i); timers.push(setTimeout(()=>{i=1;showStep(i);},1200)); timers.push(setTimeout(()=>{i=2;showStep(i);},3200)); timers.push(setTimeout(()=>{i=3;showStep(i);},5600)); timers.push(setTimeout(()=>{i=4;showStep(i);},8200)); timers.push(setTimeout(()=>{i=5;showStep(i);},10800)); timers.push(setTimeout(()=>{i=5;playing=false;},13300)); } });
+document.getElementById('pause').addEventListener('click',()=>{ playing=false; timers.forEach(clearTimeout); timers=[]; });
+document.getElementById('stepFwd').addEventListener('click',()=>{ playing=false; next(); });
+document.getElementById('stepBack').addEventListener('click',()=>{ playing=false; prev(); });
+document.getElementById('reset').addEventListener('click', reset);
+document.getElementById('explainToggle').addEventListener('click',()=> setExplainMode(!explainOn));
+
+renderTable('neuralLocTable', NeuralLocRanks);
+renderTable('rsmilesTable', RSmilesRanks);
+recomputeEnsemble();
+showStep(0);
+</script>
+</body>
+</html>

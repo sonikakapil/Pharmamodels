@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>TamGen — Target-Aware Molecule Generation (Demo)</title>
+<style>
+:root{
+  --bg:#0a0716; --bg2:#140e2d; --ink:#f7f8ff; --muted:#c4c7de;
+  --violet:#9b89ff; --aqua:#22e1ff; --pink:#ff9ecd; --amber:#ffd166; --mint:#4ef1c9;
+  --border:rgba(255,255,255,.14); --shadow:0 20px 50px rgba(0,0,0,.45); --radius:18px;
+  --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  --sans: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Noto Sans","Helvetica Neue",Arial;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; color:var(--ink); font-family:var(--sans);
+  background:
+    radial-gradient(1200px 800px at 10% -10%, #2a1b68, transparent 60%),
+    radial-gradient(1200px 800px at 110% 10%, #0a3a64, transparent 50%),
+    linear-gradient(160deg, var(--bg2), var(--bg));
+}
+.frame{max-width:1150px; margin:42px auto; padding:0 20px}
+.hero{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap}
+h1{margin:0; font-size:32px; font-weight:900; letter-spacing:.2px;
+  background:linear-gradient(90deg, var(--aqua), var(--violet), var(--pink));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  text-shadow:0 0 20px rgba(155,137,255,.35)
+}
+.sub{color:var(--muted); font-size:14px}
+.controls{display:flex; gap:10px; flex-wrap:wrap}
+button{
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+  color:var(--ink); border:1px solid var(--border); padding:10px 14px; border-radius:12px;
+  font-weight:800; cursor:pointer; box-shadow:var(--shadow); backdrop-filter:blur(8px);
+  transition:.2s transform,.25s filter,.25s box-shadow
+}
+button:hover{filter:brightness(1.15); box-shadow:0 12px 24px rgba(155,137,255,.25)}
+button:active{transform:translateY(1px)}
+.stage{position:relative; min-height:820px; padding:22px; border-radius:var(--radius);
+  border:1px solid var(--border); background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  box-shadow:var(--shadow); overflow:hidden; backdrop-filter:blur(10px)
+}
+.grid{position:absolute; inset:-20px;
+  background:
+   repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 80px),
+   repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 80px);
+  mask-image: radial-gradient(1200px 600px at 70% 30%, #000 35%, transparent 70%);
+  pointer-events:none
+}
+
+/* Steps */
+.step{position:relative; display:none; animation:fadeIn .35s ease both; padding-bottom:118px}
+.step.active{display:block}
+@keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+.badge{display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.06);
+  border:1px solid var(--border); padding:8px 12px; border-radius:999px; font-size:12px;
+  color:var(--muted); backdrop-filter:blur(6px)}
+.badge .dot{width:8px; height:8px; border-radius:50%; background:var(--aqua); box-shadow:0 0 12px var(--aqua)}
+.stepContent{display:grid; grid-template-columns: 1.45fr 1fr; gap:18px; align-items:start; margin-top:14px}
+.coach{background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:12px; padding:12px;
+  backdrop-filter:blur(8px); font-size:13px; color:var(--muted); box-shadow:var(--shadow)}
+.coach h4{margin:0 0 6px 0; font-size:14px; color:#fff}
+.coach ul{margin:6px 0 0 18px}
+.hidden{display:none}
+.chip{font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border);
+  color:var(--muted); background:rgba(255,255,255,.06); backdrop-filter: blur(6px)}
+.cards{
+  display:grid;
+  /* allow columns to shrink below max-content */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap:14px;
+  align-items:stretch;
+}
+.card{ min-width:0; display:flex; flex-direction:column; }
+.card *{ min-width:0; }  /* defensive: children can also shrink */
+.card{background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:16px; padding:16px; backdrop-filter: blur(8px)}
+.card h3{margin:0 0 6px 0; font-size:18px}
+.meta{color:var(--muted); font-size:12px}
+.mono{font-family:var(--mono)}
+
+/* 3D viewer */
+.glwrap{position:relative; height:460px; border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.15)}
+#tamgen3d{position:absolute; inset:0; width:100%; height:100%; display:block}
+.mini{display:flex; gap:8px; margin:8px 0 6px 0}
+.captionbar{position:absolute; left:0; right:0; bottom:0; padding:12px 18px; background:rgba(10,7,22,.55);
+  border-top:1px solid rgba(255,255,255,.12); backdrop-filter: blur(8px); font-size:14px}
+
+/* Progress */
+.progress{display:flex; gap:6px; align-items:center; justify-content:center; margin-top:14px}
+.pdot{width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.08); border:1px solid var(--border)}
+.pdot.active{background: radial-gradient(circle at 50% 40%, var(--aqua), var(--violet)); box-shadow:0 0 14px var(--aqua)}
+.footer{margin-top:10px; color:var(--muted); font-size:12px}
+.kbd{background:rgba(255,255,255,.07); border:1px solid var(--border); border-bottom-width:2px; padding:2px 6px; border-radius:6px; font-weight:800}
+
+@media (max-width:980px){ .stepContent{grid-template-columns:1fr} .cards{grid-template-columns:1fr} }
+
+/* ---------- Page 1: Animated funnels ---------- */
+.funnels{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:8px}
+.funnelCard{padding:12px; border-radius:16px; border:1px solid var(--border); background:rgba(255,255,255,.05)}
+.funnelTitle{display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:.2px}
+.funnelTitle .tag{font-size:11px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; color:var(--muted)}
+.funnel{position:relative; height:260px; margin-top:8px; border-radius:12px; overflow:hidden; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08)}
+.funnel .shape,
+.funnel .flow,
+.funnel .particles{
+  position:absolute; inset:10px 12px;
+  -webkit-clip-path: polygon(10% 6%, 90% 6%, 75% 35%, 62% 64%, 52% 90%, 48% 90%, 38% 64%, 25% 35%, 10% 6%);
+  clip-path: polygon(10% 6%, 90% 6%, 75% 35%, 62% 64%, 52% 90%, 48% 90%, 38% 64%, 25% 35%, 10% 6%);
+}
+.funnel .shape{
+  z-index:0;
+  background: linear-gradient(180deg, rgba(57,227,225,.9), rgba(155,137,255,.55));
+  filter: saturate(1.1) drop-shadow(0 8px 20px rgba(0,0,0,.35));
+  box-shadow: inset 0 -30px 60px rgba(0,0,0,.25), inset 0 2px 0 rgba(255,255,255,.25);
+}
+.funnel .shape::after{
+  content:""; position:absolute; inset:0;
+  background:
+    linear-gradient(0deg, transparent 34%, rgba(255,255,255,.65) 35% 36%, transparent 37% 69%, rgba(255,255,255,.65) 70% 71%, transparent 72%);
+  opacity:.5; pointer-events:none;
+}
+.funnel .flow{
+  z-index:1;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.25) 0 3px, rgba(255,255,255,0) 3px 26px);
+  mix-blend-mode: soft-light; opacity:.35; animation:flow 2.2s linear infinite;
+}
+@keyframes flow{from{background-position-y:0} to{background-position-y:180px}}
+.funnel .particles{z-index:2; pointer-events:none}
+.particle{
+  position:absolute; left:50%; top:-8%;
+  animation-name: fall; animation-duration: 3s; animation-timing-function: linear; animation-fill-mode: forwards;
+  transform: translateX(-50%); will-change: top, transform, opacity;
+}
+@keyframes fall{from{top:-8%;opacity:1} to{top:92%;opacity:.95}}
+.inner{display:block; text-shadow:0 0 12px currentColor, 0 0 22px currentColor; animation:sway 1.4s ease-in-out infinite alternate}
+@keyframes sway{from{transform:translateX(-5px) rotate(-8deg)} to{transform:translateX(5px) rotate(10deg)}}
+.particle.dot .inner{color:rgba(255,255,255,.65); font-size:10px; opacity:.9}
+.particle.plus .inner{color:var(--amber); font-size:14px}
+.particle.star .inner{color:#e3b1ff; font-size:16px}
+.fdesc{color:var(--muted); font-size:12px; margin-top:8px}
+.counterRow{display:flex; gap:8px; margin-top:6px; flex-wrap:wrap}
+.counterRow .chip b{color:#fff}
+
+/* ---------- Page 2: micro-animations ---------- */
+/* Wrap the ticker text in a container */
+.tickerWrap{ position:relative; }
+.ticker{ white-space:nowrap; overflow:hidden; }
+
+/* creates the fade on the right */
+.tickerWrap::after{
+  content:"";
+  position:absolute; right:0; top:0; bottom:0; width:44px;
+  pointer-events:none;
+  /* adjust the colors to your background if needed */
+  background: linear-gradient(to right, rgba(10,7,22,0), rgba(10,7,22,1));
+}
+
+.pulse{position:relative}
+.pulse::after{
+  content:""; position:absolute; inset:-2px; border-radius:12px;
+  background: radial-gradient(60% 60% at 50% 50%, rgba(34,225,255,.18), transparent 60%);
+  animation:ping 1.6s ease-in-out infinite;
+}
+@keyframes ping{from{opacity:.5; transform:scale(.98)} to{opacity:0; transform:scale(1.15)}}
+.breathe{display:inline-block; padding:4px 8px; border-radius:8px; border:1px solid var(--border); margin-right:6px}
+.breathe.mu{background:rgba(155,137,255,.12)}
+.breathe.sigma{background:rgba(34,225,255,.12)}
+.breathe{animation:breathe 2.2s ease-in-out infinite}
+@keyframes breathe{0%{transform:scale(.98)} 50%{transform:scale(1.06)} 100%{transform:scale(.98)}}
+
+/* ---------- Page 4: decoder animation ---------- */
+.decPanel{background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:14px; padding:12px}
+.row{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.smiles{font-family:var(--mono); font-size:18px; padding:8px 10px; background:rgba(0,0,0,.18); border-radius:8px; min-height:42px}
+.badge2{padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.07); border:1px solid var(--border); font-size:12px}
+.cursor{display:inline-block; width:8px; margin-left:2px; animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{color:transparent}}
+
+/* ---------- Page 5: triage ---------- */
+.triageGrid{display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:10px}
+.tCard{background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:14px; padding:12px}
+.tCard h3{margin:0 0 8px 0}
+.cardHeader{display:flex; align-items:center; justify-content:space-between; gap:8px}
+.score{display:flex; gap:10px; font-size:12px; color:var(--muted); flex-wrap:wrap}
+.score b{color:#fff}
+.sortRow{display:flex; gap:10px; align-items:center; margin:10px 0; flex-wrap:wrap}
+select{background:rgba(255,255,255,.07); color:#fff; border:1px solid var(--border); border-radius:10px; padding:8px}
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="frame">
+  <div class="hero">
+    <div>
+      <h1>TamGen - Target-Aware Molecule Generation</h1>
+      <div class="sub">From “screening” funnels to a target-conditioned chemical LM → stylized 3D ligand in a protein pocket</div>
+    </div>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="pause">⏸ Pause</button>
+      <button id="prev">⟵ Prev</button>
+      <button id="next">Next ⟶</button>
+      <button id="reset">↺ Reset</button>
+      <button id="explainToggle">💬 Explain Mode: ON</button>
+      <button id="tour">🎯 Auto Tour (3D)</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="grid"></div>
+
+    <!-- STEP 1 -->
+    <section class="step active" id="t1" aria-label="Step 1">
+      <span class="badge"><span class="dot"></span> Step 1 — Why TamGen (screening vs generative)</span>
+      <div class="stepContent">
+        <div>
+          <div class="funnels">
+            <div class="funnelCard" id="f_screen">
+              <div class="funnelTitle">Screening-based <span class="tag">large libraries → narrow wins</span></div>
+              <div class="funnel"><div class="shape"></div><div class="flow"></div><div class="particles"></div></div>
+              <div class="fdesc">Few valuable hits, novelty = no</div>
+              <div class="counterRow"><div class="chip"><b>Valuable</b>: <span class="vCount">0</span></div><div class="chip"><b>Novel</b>: <span class="nCount">0</span></div></div>
+            </div>
+            <div class="funnelCard" id="f_gen">
+              <div class="funnelTitle">Generative-based (TamGen) <span class="tag">target-aware proposals</span></div>
+              <div class="funnel"><div class="shape"></div><div class="flow"></div><div class="particles"></div></div>
+              <div class="fdesc">More valuable hits, novelty = yes</div>
+              <div class="counterRow"><div class="chip"><b>Valuable</b>: <span class="vCount">0</span></div><div class="chip"><b>Novel</b>: <span class="nCount">0</span></div></div>
+            </div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>What TamGen is for</h4>
+          <ul>
+            <li>Generate <b>target-aware</b> candidate molecules, not just screen fixed libraries.</li>
+            <li>Bias proposals toward affinity, novelty, and synthesizability sooner.</li>
+            <li>Feed better candidates downstream (physics, docking, assays).</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section class="step" id="t2" aria-label="Step 2">
+      <span class="badge"><span class="dot"></span> Step 2 — TamGen components</span>
+      <div class="stepContent">
+        <div>
+          <div class="cards">
+            <div class="card pulse">
+              <h3>GPT-like chemical LM</h3>
+              <div class="meta">Trained on ~10M+ SMILES; learns syntax & chemistry priors</div>
+              <div class="ticker" id="ticker">C c 1 c s c n 1 … → token stream</div>
+            </div>
+            <div class="card">
+              <h3>Protein encoder</h3>
+              <div class="meta">Sequence + geometric cues → target representation</div>
+              <div class="mono" style="margin-top:8px"><span class="badge2">Self-attention</span> <span class="badge2">+ geometry</span></div>
+            </div>
+            <div class="card">
+              <h3>Context encoder & sampling</h3>
+              <div class="meta">Forms q(z|x,y) and samples latent z to steer decoding</div>
+              <div style="margin-top:8px">
+                <span class="breathe mu">μ<sub>z</sub></span>
+                <span class="breathe sigma">σ<sub>z</sub></span>
+                <span class="badge2">→ sample z</span>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:10px" class="chip"><b>Cross-attention</b>: decoder attends to the protein rep while generating</div>
+        </div>
+        <aside class="coach">
+          <h4>Why this page</h4>
+          <ul>
+            <li>LM proposes chemistry (ticker shows tokens).</li>
+            <li>Protein encoder provides the “where to bind”.</li>
+            <li>Sampling z explores diverse but relevant chemotypes.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section class="step" id="t3" aria-label="Step 3">
+      <span class="badge"><span class="dot"></span> Step 3 — Target geometry (stylized 3D)</span>
+      <div class="stepContent">
+        <div class="card">
+          <h3>Protein surface + pocket (illustrative)</h3>
+          <div class="mini">
+            <button id="spinBtn">⟳ Toggle Spin</button>
+            <button id="surfaceBtn">🧊 Toggle Surface</button>
+            <button id="beamsBtn">🔶 Beams: ON</button>
+            <button id="snapBtn">📸 Snapshot</button>
+          </div>
+          <div class="glwrap"><canvas id="tamgen3d"></canvas></div>
+          <div class="meta">Translucent blob ≈ target protein. Glowing ring ≈ pocket. Beams show cross-attention to atoms while decoding.</div>
+        </div>
+        <aside class="coach">
+          <h4>What you’re seeing</h4>
+          <ul>
+            <li>Protein surface (toggle off for the pocket view).</li>
+            <li>Beams connect pocket → ligand atoms (toggleable).</li>
+            <li>Use Snapshot to grab a PNG.</li>
+          </ul>
+        </aside>
+      </div>
+      <div class="captionbar" id="cap3"></div>
+    </section>
+
+    <!-- STEP 4 -->
+    <section class="step" id="t4" aria-label="Step 4">
+      <span class="badge"><span class="dot"></span> Step 4 — Cross-attended decoding</span>
+      <div class="stepContent">
+        <div>
+          <div class="decPanel">
+            <div class="row">
+              <button id="genPlay">▶ Play generation</button>
+              <label class="badge2">Diversity (z) seed <input type="range" id="zSeed" min="0" max="99" value="42"></label>
+              <span class="badge2">Protein rep → <b>Cross-attention</b> → Decoder</span>
+            </div>
+            <div class="smiles" id="smilesBox">SMILES: <span id="smilesOut"></span><span class="cursor" id="cur">▌</span></div>
+          </div>
+          <div class="cards" style="margin-top:12px">
+            <div class="card"><h3>Beam guidance</h3><div class="meta">Pocket attention pulses as tokens are emitted</div></div>
+            <div class="card"><h3>Diversity via z</h3><div class="meta">Different seeds → distinct but on-target chemotypes</div></div>
+            <div class="card"><h3>Constraints</h3><div class="meta">Filters (valency/PAINS/SA) can be applied post-generation</div></div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>What this shows</h4>
+          <ul>
+            <li>Token stream builds a SMILES sequence.</li>
+            <li>Each token triggers an attention pulse to the pocket (see 3D).</li>
+            <li>Changing z alters the sequence trajectory.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 5 -->
+    <section class="step" id="t5" aria-label="Step 5">
+      <span class="badge"><span class="dot"></span> Step 5 — Generated ligands & triage</span>
+      <div class="stepContent">
+        <div>
+          <div class="sortRow">
+            <button id="gen3">🌱 Generate 3 candidates</button>
+            <label class="badge2">Sort by
+              <select id="sortBy">
+                <option value="score">Composite score</option>
+                <option value="novelty">Novelty</option>
+                <option value="affinity">Affinity</option>
+                <option value="synth">Synthesizability</option>
+              </select>
+            </label>
+            <button id="sparkBtn">✦ Toggle Sparkles</button>
+            <button id="tourBtn2">🎯 Tour pocket</button>
+          </div>
+          <div class="triageGrid" id="triage"></div>
+          <div class="meta" style="margin-top:8px">Sparkles denote “novel & valuable” candidates (illustrative).</div>
+        </div>
+        <aside class="coach">
+          <h4>How to read this</h4>
+          <ul>
+            <li>We simulate 3 candidates with novelty/affinity/synth scores.</li>
+            <li>Sort them, then <b>Preview</b> one in 3D (different seed).</li>
+            <li>In practice, this is where physics/docking/ADMET screens begin.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress">
+    <div class="pdot active" data-dot="1"></div>
+    <div class="pdot" data-dot="2"></div>
+    <div class="pdot" data-dot="3"></div>
+    <div class="pdot" data-dot="4"></div>
+    <div class="pdot" data-dot="5"></div>
+  </div>
+  <div class="footer">
+    Click <span class="kbd">Play</span> to auto-advance. Keep <span class="kbd">Explain Mode</span> on for the right-hand “Coach” panel. 3D is illustrative only (not a real structure).
+  </div>
+</div>
+
+<!-- 3D MODULE -->
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+function ease(u){return u*(2-u);}
+function lerp(a,b,t){return a+(b-a)*t;}
+
+function makeNoisySurface(geo, amp=0.35){
+  const p = geo.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i), y=p.getY(i), z=p.getZ(i);
+    const r = Math.sin(x*1.9)*.07 + Math.cos(y*2.1)*.06 + Math.sin(z*1.7)*.05;
+    const s = 1 + amp*r;
+    p.setXYZ(i, x*s, y*s, z*s);
+  }
+  geo.computeVertexNormals(); return geo;
+}
+
+window.createTamGenViewer = function({canvasId, snapBtnId, beamsBtnId, surfaceBtnId}){
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x0a0716, 0.018);
+
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.set(4.2, 2.4, 7.2);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.06; controls.minDistance = 2; controls.maxDistance = 16;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9); dir.position.set(3,4,2); scene.add(dir);
+  const rim = new THREE.DirectionalLight(0x88ccff, 0.5); rim.position.set(-3,-2,-4); scene.add(rim);
+
+  const root = new THREE.Group(); scene.add(root);
+
+  // Protein surface
+  const protGeom = makeNoisySurface(new THREE.IcosahedronGeometry(2.1, 4), 0.55);
+  const protMat  = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(0.2,0.4,0.9), transparent:true, opacity:0.22,
+    roughness:0.5, transmission:0.65, thickness:0.6, metalness:0.0, clearcoat:0.3
+  });
+  const protein = new THREE.Mesh(protGeom, protMat); protein.renderOrder = 1; root.add(protein);
+
+  // Pocket ring
+  const pocketCenter = new THREE.Vector3(0.6,-0.2,0.5);
+  const torus = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.08, 24, 100),
+    new THREE.MeshBasicMaterial({color:0x22e1ff, transparent:true, opacity:0.9}));
+  torus.position.copy(pocketCenter);
+  torus.rotation.set(Math.PI*0.3, Math.PI*0.2, Math.PI*0.05);
+  root.add(torus);
+
+  // Ligand & bonds
+  const ligand = new THREE.Group(); root.add(ligand);
+  const beadGeom = new THREE.SphereGeometry(0.13, 18, 14);
+  const bonds = new THREE.Group(); ligand.add(bonds);
+
+  function plddtColor(t){
+    let r,g,b;
+    if(t<0.55){ const u=t/0.55; r=lerp(30,24,u); g=lerp(144,209,u); b=lerp(255,118,u); }
+    else{ const u=(t-0.55)/0.45; r=lerp(24,255,u); g=lerp(209,209,u); b=lerp(118,102,u); }
+    return new THREE.Color(r/255,g/255,b/255);
+  }
+
+  function makeLigandCurve(seed=0){
+    const rng = (i)=>Math.sin(i*234.56+seed*13.3)*0.5+Math.cos(i*91.12-seed*7.7)*0.5;
+    const pts=[]; const N=12;
+    for(let i=0;i<N;i++){
+      const u=i/(N-1);
+      const x = pocketCenter.x + (u-0.5)*1.6 + 0.4*rng(i+1);
+      const y = pocketCenter.y + Math.sin(u*Math.PI*1.3)*0.8 + 0.35*rng(i+2);
+      const z = pocketCenter.z + Math.cos(u*Math.PI*1.8)*0.6 + 0.35*rng(i+3);
+      pts.push(new THREE.Vector3(x,y,z));
+    }
+    return new THREE.CatmullRomCurve3(pts);
+  }
+
+  let chain=[]; let cylinders=[]; let curve = makeLigandCurve(42);
+  function rebuildLigand(){
+    chain.forEach(m=>ligand.remove(m)); chain.length=0;
+    cylinders.forEach(c=>bonds.remove(c)); cylinders.length=0;
+
+    const N=12; let prev=null;
+    for(let i=0;i<N;i++){
+      const t=i/(N-1), p=curve.getPoint(t);
+      const mat = new THREE.MeshPhongMaterial({color: plddtColor(t), shininess:60, specular:0x335577});
+      const bead = new THREE.Mesh(beadGeom, mat);
+      bead.position.copy(p); ligand.add(bead); chain.push(bead);
+      if(prev){
+        const seg = new THREE.Vector3().subVectors(p, prev.position);
+        const len = seg.length();
+        const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,len,12),
+          new THREE.MeshBasicMaterial({color:0xffffff, opacity:0.5, transparent:true}));
+        cyl.position.copy(prev.position).add(seg.clone().multiplyScalar(0.5));
+        cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), seg.clone().normalize());
+        bonds.add(cyl); cylinders.push(cyl);
+      }
+      prev = bead;
+    }
+    buildBeams(); // update beams to new chain
+  }
+
+  // Attention beams (thick glowing cylinders)
+  const beamGroup = new THREE.Group(); root.add(beamGroup);
+  function buildBeams(){
+    beamGroup.clear();
+    const idxs = [2,5,8,10].filter(i=>chain[i]);
+    idxs.forEach(i=>{
+      const p = chain[i].position.clone();
+      const seg = new THREE.Vector3().subVectors(p, pocketCenter);
+      const len = seg.length();
+      const mat = new THREE.MeshPhongMaterial({color:0xff9ecd, emissive:0x8f3a80, emissiveIntensity:0.9, transparent:true, opacity:0.95});
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,len,12), mat);
+      beam.position.copy(pocketCenter).add(seg.clone().multiplyScalar(0.5));
+      beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), seg.normalize());
+      beamGroup.add(beam);
+    });
+  }
+
+  // Sparkles (novel & valuable)
+  const sparkGroup = new THREE.Group(); root.add(sparkGroup);
+  function setSparkles(on=true){
+    sparkGroup.clear(); if(!on) return;
+    for(let i=0;i<18;i++){
+      const s = new THREE.Mesh(new THREE.OctahedronGeometry(0.06,0), new THREE.MeshPhongMaterial({color:0xe3b1ff, emissive:0x7f3a60, emissiveIntensity:0.7}));
+      const base = chain[Math.floor(3+Math.random()*6)]?.position || pocketCenter;
+      s.position.copy(base).add(new THREE.Vector3((Math.random()-.5)*0.6,(Math.random()-.5)*0.6,(Math.random()-.5)*0.6));
+      sparkGroup.add(s);
+    }
+  }
+
+  // initial build
+  rebuildLigand(); setSparkles(true);
+
+  // Resize
+  function resize(){
+    const parent = renderer.domElement.parentElement;
+    const {width, height} = parent.getBoundingClientRect();
+    renderer.setSize(width, height, false);
+    camera.aspect = width/height; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize, {passive:true}); resize(); setTimeout(resize,50);
+
+  // Animate
+  let spin=true;
+  function animate(){
+    requestAnimationFrame(animate);
+    if(spin) root.rotation.y += 0.004;
+    sparkGroup.children.forEach((s)=>{ s.rotation.x += 0.01; s.rotation.y += 0.012; });
+    renderer.render(scene, camera);
+  } animate();
+
+  // Camera fly
+  function flyTo(vec, ms=1100){
+    const startT = controls.target.clone();
+    const startP = camera.position.clone();
+    const dir = startP.clone().sub(startT);
+    const endP = vec.clone().add(dir);
+    const t0 = performance.now();
+    return new Promise(resolve=>{
+      (function step(now){
+        const u = Math.min(1, (now-t0)/ms), e = ease(u);
+        controls.target.lerpVectors(startT, vec, e);
+        camera.position.lerpVectors(startP, endP, e);
+        if(u<1) requestAnimationFrame(step); else resolve();
+      })(performance.now());
+    });
+  }
+
+  let beamsOn = true;
+
+  // Public API
+  document.getElementById(snapBtnId).onclick = ()=>{
+    const prev = scene.background; scene.background = new THREE.Color(0x0a0716);
+    renderer.render(scene, camera);
+    const a = document.createElement('a'); a.href = renderer.domElement.toDataURL('image/png'); a.download='tamgen_demo.png'; a.click();
+    scene.background = prev;
+  };
+  document.getElementById(beamsBtnId).onclick = (e)=>{ beamsOn=!beamsOn; beamGroup.visible = beamsOn; e.currentTarget.textContent = `🔶 Beams: ${beamsOn?'ON':'OFF'}`; };
+  document.getElementById(surfaceBtnId).onclick = ()=>{ protein.visible = !protein.visible; torus.visible = !torus.visible; };
+
+  return {
+    setSpin:(on)=>{ spin=on; },
+    regenerate:(seed=42)=>{
+      curve = makeLigandCurve(seed);
+      rebuildLigand();
+    },
+    toggleSparkles:()=>{ const on = sparkGroup.children.length===0; setSparkles(on); },
+    pulseBeams:()=>{
+      beamGroup.children.forEach(b=>{
+        const start = b.material.emissiveIntensity;
+        const peak = 1.6;
+        const t0 = performance.now();
+        (function step(now){
+          const u = Math.min(1,(now-t0)/220);
+          b.material.emissiveIntensity = start + (peak-start)*Math.sin(u*Math.PI);
+          if(u<1) requestAnimationFrame(step); else b.material.emissiveIntensity = start;
+        })(performance.now());
+      });
+    },
+    tour: async ()=>{
+      spin=false;
+      await flyTo(new THREE.Vector3(0.0,0.0,0.0));
+      await flyTo(pocketCenter);
+      const mid = chain[6]?.position || pocketCenter;
+      await flyTo(mid);
+      spin=true;
+    },
+    reset:()=>{ controls.reset(); root.rotation.set(0,0,0); }
+  };
+};
+</script>
+
+<!-- APP LOGIC -->
+<script>
+const steps=["t1","t2","t3","t4","t5"];
+let idx=0, playing=false, timers=[], explainOn=true;
+
+const dots=[...document.querySelectorAll('[data-dot]')];
+function setExplainMode(on){
+  explainOn = on;
+  document.getElementById('explainToggle').textContent = on ? "💬 Explain Mode: ON" : "💬 Explain Mode: OFF";
+  document.querySelectorAll('.coach').forEach(el=>el.classList.toggle('hidden', !on));
+}
+function gotoStep(i){ playing=false; idx=i; showStep(idx); }
+
+/* Page 1 funnels */
+function setupFunnel(root, opts){
+  const layer = root.querySelector('.particles');
+  const vEl = root.parentElement.querySelector('.vCount');
+  const nEl = root.parentElement.querySelector('.nCount');
+  let v=0, n=0, id=null;
+  function update(){ vEl.textContent=v; nEl.textContent=n; }
+  function reset(){ v=0; n=0; update(); layer.innerHTML=""; }
+  function spawn(){
+    const r = Math.random();
+    let cls="dot", glyph="•";
+    if(r < opts.novelProb){ cls="star"; glyph="✦"; }
+    else if(r < opts.novelProb + opts.valuableProb){ cls="plus"; glyph="+"; }
+    const span = document.createElement('span'); span.className = `particle ${cls}`;
+    const dur = (opts.minDur + Math.random()*(opts.maxDur - opts.minDur)).toFixed(2) + 's';
+    span.style.animationDuration = dur; span.style.animationDelay = (Math.random()*0.25).toFixed(2) + 's';
+    const spread = opts.spreadPct ?? 10; span.style.left = (50 + (Math.random()*2-1)*spread) + '%';
+    const inner = document.createElement('span'); inner.className='inner'; inner.textContent=glyph; span.appendChild(inner);
+    layer.appendChild(span);
+    span.addEventListener('animationend', ()=>{
+      if(cls==="plus") v++; if(cls==="star"){ v++; n++; } update(); span.remove();
+    });
+  }
+  return { start(){ reset(); id && clearInterval(id); id=setInterval(spawn, opts.rateMs); },
+           stop(){ id && clearInterval(id); id=null; reset(); } };
+}
+let f1=null, f2=null;
+function startStep1(){
+  const sRoot = document.querySelector('#f_screen .funnel');
+  const gRoot = document.querySelector('#f_gen .funnel');
+  f1 ||= setupFunnel(sRoot, {rateMs:420,minDur:2.8,maxDur:3.8,spreadPct:8, valuableProb:0.18,novelProb:0.00});
+  f2 ||= setupFunnel(gRoot, {rateMs:220,minDur:2.6,maxDur:3.4,spreadPct:12,valuableProb:0.55,novelProb:0.28});
+  f1.start(); f2.start();
+}
+function stopStep1(){ f1?.stop(); f2?.stop(); }
+
+/* Page 2: ticker */
+let tickerId=null;
+function startTicker(){
+  const el=document.getElementById('ticker');
+  const toks="C c 1 c s c n 1 . . . → token stream".split(" ");
+  let i=0; tickerId=setInterval(()=>{ el.textContent = toks.slice(0,(i++%toks.length)+1).join(" "); }, 240);
+}
+function stopTicker(){ clearInterval(tickerId); tickerId=null; }
+
+/* 3D */
+let viewer=null, viewerReady=false, spinState=true;
+function init3D(){
+  if(viewerReady) return;
+  viewer = window.createTamGenViewer({canvasId:'tamgen3d', snapBtnId:'snapBtn', beamsBtnId:'beamsBtn', surfaceBtnId:'surfaceBtn'});
+  viewerReady=true;
+  document.getElementById('spinBtn').onclick = ()=>{ spinState=!spinState; viewer.setSpin(spinState); };
+  document.getElementById('cap3').textContent = "Protein surface with highlighted pocket. Toggle surface/beams; snapshot a PNG.";
+  document.getElementById('sparkBtn')?.addEventListener('click', ()=> { gotoStep(2); }); // placeholder if pressed on other pages
+  document.getElementById('tourBtn2')?.addEventListener('click', ()=> viewer.tour());
+  document.getElementById('tour').onclick = async ()=>{ idx=2; showStep(idx); await viewer.tour(); };
+}
+
+/* Page 4: token-by-token generator */
+let genTimer=null;
+function playGeneration(){
+  const seed = Number(document.getElementById('zSeed').value);
+  const variants=[
+    "C1=CC(=O)NC(=O)N1",
+    "COc1ccc2nc(S)sc2c1",
+    "CCN(CC)C(=O)c1ccoc1",
+    "Nc1ncccc1C(=O)O"
+  ];
+  const s = variants[seed % variants.length]; // a complete SMILES
+  const out = document.getElementById('smilesOut');
+  const cur = document.getElementById('cur');
+  out.textContent=""; cur.style.visibility="visible";
+  clearInterval(genTimer);
+  let i=0;
+  genTimer=setInterval(()=>{
+    if(i>=s.length){
+      clearInterval(genTimer);
+      cur.style.visibility="hidden"; // finished cleanly
+      return;
+    }
+    out.textContent += s[i++];
+    viewer?.pulseBeams(); // pulse attention in 3D
+  }, 110);
+}
+
+/* Page 5: triage */
+function synthCandidates(){
+  const seed = Math.floor(Math.random()*1000);
+  const arr=[0,1,2].map(k=>{
+    const r = (x)=> (Math.sin(seed*(k+1)*x)+1)/2;
+    const novelty = Math.round(65 + 35*r(0.31+k));     // 65–100
+    const affinity = Math.round(60 + 40*r(0.53-k));    // 60–100
+    const synth = Math.round(55 + 45*r(0.77+k*0.2));   // 55–100 (higher = easier)
+    const score = Math.round(0.45*affinity + 0.35*novelty + 0.20*synth);
+    const zseed = seed + k*37;
+    return {id:`cand${k}`, novelty, affinity, synth, score, zseed};
+  });
+  return arr;
+}
+let candidates=[];
+function renderTriage(){
+  const box=document.getElementById('triage'); box.innerHTML="";
+  const sortKey=document.getElementById('sortBy').value;
+  candidates.sort((a,b)=>b[sortKey]-a[sortKey]);
+  candidates.forEach(c=>{
+    const el=document.createElement('div'); el.className='tCard';
+    el.innerHTML = `
+      <div class="cardHeader">
+        <h3>Candidate ${c.id.slice(-1)}</h3>
+        <button data-id="${c.id}" class="preview">Preview in 3D</button>
+      </div>
+      <div class="score">
+        <span><b>Novelty</b> ${c.novelty}</span>
+        <span><b>Affinity</b> ${c.affinity}</span>
+        <span><b>Synth</b> ${c.synth}</span>
+        <span><b>Score</b> ${c.score}</span>
+      </div>
+      <div class="meta">Seed: ${c.zseed}</div>`;
+    box.appendChild(el);
+  });
+  box.querySelectorAll('.preview').forEach(btn=>{
+    btn.onclick = async (e)=>{
+      const id=e.currentTarget.getAttribute('data-id');
+      const c=candidates.find(x=>x.id===id);
+      // Ensure 3D is ready and visible, then preview
+      if(!viewerReady) init3D();
+      gotoStep(2); // go to page 3 (index 2)
+      await new Promise(r=>setTimeout(r,50));
+      viewer.regenerate(c.zseed);
+    };
+  });
+}
+
+/* Step show/flow */
+function showStep(i){
+  timers.forEach(t=>clearTimeout(t)); timers=[];
+  if(steps[idx]==='t1' && steps[i]!=='t1') stopStep1();
+  if(steps[idx]==='t2' && steps[i]!=='t2') stopTicker();
+
+  document.querySelectorAll('.step').forEach(el=>el.classList.remove('active'));
+  document.getElementById(steps[i]).classList.add('active');
+  dots.forEach((d,k)=>d.classList.toggle('active', k===i));
+  setExplainMode(explainOn);
+
+  if(steps[i]==='t1'){ startStep1(); if(playing) timers.push(setTimeout(next, 5000)); }
+  if(steps[i]==='t2'){ startTicker(); if(playing) timers.push(setTimeout(next, 3500)); }
+  if(steps[i]==='t3'){ init3D(); if(playing) timers.push(setTimeout(next, 5200)); }
+  if(steps[i]==='t4'){ if(playing){ playGeneration(); timers.push(setTimeout(next, 5200)); } }
+  if(steps[i]==='t5'){ /* no auto-advance */ }
+}
+function next(){ idx=Math.min(idx+1, steps.length-1); showStep(idx); }
+function prev(){ idx=Math.max(idx-1, 0); showStep(idx); }
+function reset(){ playing=false; idx=0; showStep(idx); viewer?.reset(); }
+
+document.getElementById('play').onclick = ()=>{ if(!playing){ playing=true; showStep(idx);} };
+document.getElementById('pause').onclick = ()=>{ playing=false; timers.forEach(t=>clearTimeout(t)); timers=[]; };
+document.getElementById('next').onclick = ()=>{ playing=false; next(); };
+document.getElementById('prev').onclick = ()=>{ playing=false; prev(); };
+document.getElementById('reset').onclick = reset;
+document.getElementById('explainToggle').onclick = ()=> setExplainMode(!explainOn);
+
+/* Bind page-4 & page-5 controls */
+document.getElementById('genPlay').onclick = ()=> playGeneration();
+document.getElementById('zSeed').oninput = ()=> {/* z alters which SMILES we type */};
+document.getElementById('gen3').onclick = ()=>{
+  candidates = synthCandidates(); renderTriage();
+  const best=[...candidates].sort((a,b)=>b.score-a.score)[0];
+  if(!viewerReady) init3D();
+  gotoStep(2);
+  setTimeout(()=>viewer.regenerate(best.zseed), 60);
+};
+document.getElementById('sortBy').onchange = ()=> renderTriage();
+document.getElementById('sparkBtn').onclick = ()=>{
+  if(!viewerReady) init3D();
+  gotoStep(2);
+  viewer.toggleSparkles();
+};
+document.getElementById('tourBtn2').onclick = ()=>{
+  if(!viewerReady) init3D();
+  gotoStep(2);
+  viewer.tour();
+};
+
+showStep(idx);
+</script>
+</body>
+</html>

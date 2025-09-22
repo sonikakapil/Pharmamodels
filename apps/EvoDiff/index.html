@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EvoDiff → Sequence Diffusion → 3D (Demo)</title>
+<style>
+:root{
+  --bg:#0a0716; --bg2:#140e2d; --ink:#f7f8ff; --muted:#c4c7de;
+  --violet:#9b89ff; --aqua:#22e1ff; --pink:#ff9ecd; --amber:#ffd166;
+  --border:rgba(255,255,255,.14); --shadow:0 20px 50px rgba(0,0,0,.45);
+  --radius:18px;
+  --m1: rgba(155,137,255,.22); --m2: rgba(34,225,255,.22); --m3: rgba(255,158,205,.22);
+  --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  --sans: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Noto Sans","Helvetica Neue",Arial;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; color:var(--ink); font-family:var(--sans);
+  background:
+    radial-gradient(1200px 800px at 10% -10%, #2a1b68, transparent 60%),
+    radial-gradient(1200px 800px at 110% 10%, #0a3a64, transparent 50%),
+    linear-gradient(160deg, var(--bg2), var(--bg));
+}
+.frame{max-width:1100px; margin:42px auto; padding:0 20px}
+.hero{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap}
+h1{margin:0; font-size:30px; font-weight:900; letter-spacing:.2px;
+  background:linear-gradient(90deg, var(--aqua), var(--violet), var(--pink));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  text-shadow:0 0 20px rgba(155,137,255,.35)}
+.sub{color:var(--muted); font-size:14px}
+.controls{display:flex; gap:10px; flex-wrap:wrap}
+button{
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+  color:var(--ink); border:1px solid var(--border); padding:10px 14px; border-radius:12px;
+  font-weight:800; cursor:pointer; box-shadow:var(--shadow); backdrop-filter:blur(8px);
+  transition:.2s transform,.25s filter,.25s box-shadow
+}
+button:hover{filter:brightness(1.15); box-shadow:0 12px 24px rgba(155,137,255,.25)}
+button:active{transform:translateY(1px)}
+.stage{
+  position:relative; min-height:760px; padding:22px; border-radius:var(--radius);
+  border:1px solid var(--border);
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  box-shadow:var(--shadow); overflow:hidden; backdrop-filter:blur(10px)
+}
+.grid{position:absolute; inset:-20px;
+  background:
+   repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 80px),
+   repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 80px);
+  mask-image: radial-gradient(1200px 600px at 70% 30%, #000 35%, transparent 70%);
+  pointer-events:none}
+
+/* Steps */
+.step{position:relative; display:none; animation:fadeIn .4s ease both; padding-bottom:110px}
+.step.active{display:block}
+@keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+.badge{display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.06); border:1px solid var(--border); padding:8px 12px; border-radius:999px; font-size:12px; color:var(--muted); backdrop-filter:blur(6px)}
+.badge .dot{width:8px; height:8px; border-radius:50%; background:var(--aqua); box-shadow:0 0 12px var(--aqua)}
+
+/* Two-column layout */
+.stepContent{display:grid; grid-template-columns: 1.5fr 1fr; gap:18px; align-items:start; margin-top:14px}
+.coach{background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:12px; padding:12px; backdrop-filter:blur(8px); font-size:13px; color:var(--muted); box-shadow:var(--shadow)}
+.coach h4{margin:0 0 6px 0; font-size:14px; color:#fff}
+.coach ul{margin:6px 0 0 18px}
+.hidden{display:none}
+
+/* Step 1: task + constraints */
+.chips{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+.chip{font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.06); backdrop-filter: blur(6px)}
+.chip b{color:var(--ink)}
+.seq{font-family:var(--mono); font-size:18px; margin-top:16px}
+.pin{background:linear-gradient(180deg, var(--m3), rgba(255,158,205,.08)); border-radius:6px; padding:0 3px; box-shadow:0 0 0 1px rgba(255,158,205,.55) inset}
+
+/* Step 2/3: diffusion timeline */
+.timeline{display:grid; grid-template-columns:repeat(12,1fr); gap:8px; margin-top:16px}
+.box{height:22px; border-radius:7px; border:1px solid var(--border); background:rgba(255,255,255,.06)}
+.box.on{background:linear-gradient(90deg, rgba(34,225,255,.18), rgba(155,137,255,.1))}
+.tbar{display:flex; align-items:center; gap:10px; margin-top:10px; font-size:12px; color:var(--muted)}
+.tbar input{width:220px}
+
+/* sequences list */
+.list{font-family:var(--mono); font-size:16px; line-height:1.6; margin-top:10px}
+.li{opacity:0; transform:translateY(6px)}
+.li.show{opacity:1; transform:none; transition:.34s ease}
+
+/* Step 6: 3D viewer */
+.glwrap{position:relative; height:420px; border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.15)}
+#evodiff3d{position:absolute; inset:0; width:100%; height:100%; display:block}
+.mini{display:flex; gap:8px; margin:8px 0 6px 0}
+
+.captionbar{position:absolute; left:0; right:0; bottom:0; padding:12px 18px; background:rgba(10,7,22,.55); border-top:1px solid rgba(255,255,255,.12); backdrop-filter: blur(8px); font-size:14px}
+.progress{display:flex; gap:6px; align-items:center; justify-content:center; margin-top:14px}
+.pdot{width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.08); border:1px solid var(--border)}
+.pdot.active{background: radial-gradient(circle at 50% 40%, var(--aqua), var(--violet)); box-shadow:0 0 14px var(--aqua)}
+.footer{margin-top:10px; color:var(--muted); font-size:12px}
+.kbd{background:rgba(255,255,255,.07); border:1px solid var(--border); border-bottom-width:2px; padding:2px 6px; border-radius:6px; font-weight:800}
+
+@media (max-width:980px){
+  .stepContent{grid-template-columns:1fr}
+}
+</style>
+
+<!-- Import map for three.js modules -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="frame">
+  <div class="hero">
+    <div>
+      <h1>EvoDiff → Sequence Diffusion → 3D</h1>
+      <div class="sub">Start in sequence noise → denoise under constraints → predict a fold (stylized)</div>
+    </div>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="pause">⏸ Pause</button>
+      <button id="prev">⟵ Prev</button>
+      <button id="next">Next ⟶</button>
+      <button id="reset">↺ Reset</button>
+      <button id="explain">💬 Explain Mode: ON</button>
+      <button id="tour">🎯 Auto Tour Pins</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="grid"></div>
+
+    <!-- STEP 1 -->
+    <section class="step active" id="st1">
+      <span class="badge"><span class="dot"></span> Step 1 — Design task + constraints</span>
+      <div class="stepContent">
+        <div>
+          <div class="chips">
+            <span class="chip"><b>Goal</b>: small helical mini-protein (~60 aa)</span>
+            <span class="chip"><b>Constraint</b>: keep motif <b>EAAAK</b> at 12–16</span>
+            <span class="chip"><b>Conditioning</b>: soft (motif may wiggle)</span>
+          </div>
+          <div class="seq">
+            Seed (mask/noise): <span class="pin">?????</span>?????????????????????????????????????????????????????
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>What EvoDiff does</h4>
+          <ul>
+            <li>Trains on large collections of natural sequences.</li>
+            <li>Starts from noisy tokens and <b>denoises</b> to a valid protein.</li>
+            <li>We can pin residues/motifs to steer the generation.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section class="step" id="st2">
+      <span class="badge"><span class="dot"></span> Step 2 — Diffusion schedule (t = 1 → 0)</span>
+      <div class="stepContent">
+        <div>
+          <div class="timeline" id="tl">
+            <!-- 12 boxes -->
+            <div class="box on"></div><div class="box on"></div><div class="box on"></div>
+            <div class="box on"></div><div class="box on"></div><div class="box on"></div>
+            <div class="box"></div><div class="box"></div><div class="box"></div>
+            <div class="box"></div><div class="box"></div><div class="box"></div>
+          </div>
+          <div class="tbar">
+            <span>t</span>
+            <input type="range" id="tSlider" min="0" max="100" value="50" />
+            <span id="tLabel">t = 0.50</span>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>How to read this</h4>
+          <ul>
+            <li>Left boxes are early, very noisy steps.</li>
+            <li>As t↓ the model sharpens token probabilities.</li>
+            <li>Motifs act like anchors during denoising.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section class="step" id="st3">
+      <span class="badge"><span class="dot"></span> Step 3 — From noise to a clean sequence</span>
+      <div class="stepContent">
+        <div>
+          <div class="list" id="seqList">
+            <div class="li">t=1.00 →  ????????????????????????????????????????????????????????????</div>
+            <div class="li">t=0.60 →  DQK<span class="pin">EAAAK</span>QLKQELKQQ…</div>
+            <div class="li">t=0.35 →  MQN<span class="pin">EAAAK</span>QALQELLKQ…</div>
+            <div class="li">t=0.00 →  MNK<span class="pin">EAAAK</span>QALQELLKQLAEK… (sample #1)</div>
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>Sampling loop</h4>
+          <ul>
+            <li>Iterate denoise steps and sample the next token.</li>
+            <li>Keep pinned residues; resample the rest.</li>
+            <li>Repeat to get multiple diverse sequences.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 4 -->
+    <section class="step" id="st4">
+      <span class="badge"><span class="dot"></span> Step 4 — Three candidate sequences</span>
+      <div class="stepContent">
+        <div class="list" id="cand">
+          <div class="li">1. MNK<span class="pin">EAAAK</span>QALQELLKQLAEKQELAAKL…</div>
+          <div class="li">2. MAK<span class="pin">EAAAK</span>QALEELKQLAEKQELDAKL…</div>
+          <div class="li">3. MVK<span class="pin">EAAAK</span>QALEQLKQLAEKQELAAKL…</div>
+        </div>
+        <aside class="coach">
+          <h4>Next</h4>
+          <ul>
+            <li>Score simple properties (charge, length, motifs).</li>
+            <li>Send to a structure predictor to sanity-check folding.</li>
+            <li>Pick the top candidate(s) for wet-lab testing.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- STEP 5 -->
+    <section class="step" id="st5">
+      <span class="badge"><span class="dot"></span> Step 5 — Predict structure (illustrative)</span>
+      <div class="stepContent">
+        <div>
+          <div class="mini">
+            <button id="spin">⟳ Toggle Spin</button>
+            <button id="pins">✦ Toggle Motif Pins</button>
+            <button id="snap">📸 Snapshot PNG</button>
+            <button id="seed">🎲 New Noise</button>
+            <button id="playDiff">▶ Diffuse</button>
+          </div>
+          <div class="glwrap"><canvas id="evodiff3d"></canvas></div>
+          <div class="sub" style="margin-top:8px">
+            Tube color ≈ confidence-like gradient (illustrative). Pink pins mark motif 12–16 (EAAAK).
+          </div>
+        </div>
+        <aside class="coach">
+          <h4>What you’re seeing</h4>
+          <ul>
+            <li>A noisy backbone gradually denoises into a smooth helix-rich shape.</li>
+            <li>Motif pins act like anchors the model tries to respect.</li>
+            <li>Use <b>Diffuse</b> to replay the denoising, or <b>New Noise</b> for another sample.</li>
+          </ul>
+        </aside>
+      </div>
+      <div class="captionbar" id="cap" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress" aria-label="progress">
+    <div class="pdot active" data-dot="1"></div>
+    <div class="pdot" data-dot="2"></div>
+    <div class="pdot" data-dot="3"></div>
+    <div class="pdot" data-dot="4"></div>
+    <div class="pdot" data-dot="5"></div>
+  </div>
+  <div class="footer">
+    Click <span class="kbd">Play</span> to auto-advance. Keep <span class="kbd">Explain Mode</span> on for the right-hand “Coach” panel. In Step 5, use the mini buttons to explore diffusion and motif pins.
+  </div>
+</div>
+
+<!-- 3D viewer (module) -->
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+function plddtColor(t){
+  // blue → aqua → yellow (illustrative)
+  const L=(a,b,u)=>a+(b-a)*u;
+  let r,g,b;
+  if(t<0.55){ const u=t/0.55; r=L(30,24,u); g=L(144,209,u); b=L(255,118,u); }
+  else { const u=(t-0.55)/0.45; r=L(24,255,u); g=L(209,209,u); b=L(118,102,u); }
+  return new THREE.Color(r/255,g/255,b/255);
+}
+
+window.createEvoDiffViewer = function({canvasId, spinBtnId, pinsBtnId, snapBtnId, seedBtnId, playDiffBtnId}){
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x0a0716, 0.018);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.set(3.6, 2.4, 6.5);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.06;
+  controls.minDistance = 1.8; controls.maxDistance = 12;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 1.05); key.position.set(3,4,2); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x88ccff, 0.55); rim.position.set(-3,-2,-4); scene.add(rim);
+
+  const group = new THREE.Group(); scene.add(group);
+
+  // --- backbone definition
+  const N = 60; // residues
+  const basePts = [];
+  for(let i=0;i<N;i++){
+    const t=i/(N-1);
+    // simple helix-like path with two helices and a loop
+    const x = (t-0.5)*10.0;
+    const y = Math.sin(t*Math.PI*4.0)*(t<0.35||t>0.65?0.6:0.25) + (t>0.45&&t<0.55?0.8:0.0);
+    const z = Math.cos(t*Math.PI*4.0)*(t<0.35||t>0.65?0.6:0.25);
+    basePts.push(new THREE.Vector3(x,y,z));
+  }
+  const baseCurve = new THREE.CatmullRomCurve3(basePts);
+
+  // noise field (per-residue jitter), reduced near motif window (12-16 ~ 0.2-0.27)
+  let noiseSeed = Math.random()*1000;
+  const jitter = new Array(N).fill(0).map((_,k)=>{
+    const t=k/(N-1);
+    const nearMotif = (t>=0.20 && t<=0.27) ? 0.25 : 1.0;  // anchor the motif window
+    const a = 0.8*nearMotif;
+    function r(n){ return (Math.sin(n+noiseSeed*1.73)*.5+.5)*2-1; }
+    return new THREE.Vector3(r(k*.9)*a, r(k*1.3)*a, r(k*1.7)*a);
+  });
+
+  // holders
+  let tube, beads, pins;
+  const radius=0.12, radialSeg=16, tubularSeg=480;
+
+  function buildGeometry(denoise){
+    if(tube){ group.remove(tube); tube.geometry.dispose(); tube.material.dispose(); }
+    if(beads){ group.remove(beads); beads.traverse(o=>o.geometry?.dispose()); }
+
+    // mix base path with jitter based on denoise (0=noisy, 1=clean)
+    const pts=[];
+    for(let k=0;k<N;k++){
+      const t=k/(N-1);
+      const p = baseCurve.getPoint(t).clone();
+      const j = jitter[k].clone().multiplyScalar(1-denoise);
+      pts.push(p.add(j));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+
+    const geom = new THREE.TubeGeometry(curve, tubularSeg, radius, radialSeg, false);
+    const count = geom.attributes.position.count;
+    const uv = geom.attributes.uv;
+    const col = new THREE.BufferAttribute(new Float32Array(count*3), 3);
+    for(let i=0;i<count;i++){
+      const frac = uv ? uv.getY(i) : (i/(count-1));
+      const c = plddtColor(Math.max(0.15, Math.min(1, denoise*0.8 + frac*0.3)));
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    geom.setAttribute('color', col);
+    tube = new THREE.Mesh(geom, new THREE.MeshPhongMaterial({vertexColors:true, shininess:60, specular:0x335577}));
+    group.add(tube);
+
+    // beads
+    beads = new THREE.Group(); group.add(beads);
+    const beadGeom = new THREE.SphereGeometry(0.06, 16, 12);
+    for(let k=0;k<N;k++){
+      const t=k/(N-1), p=curve.getPoint(t), c=plddtColor(Math.max(0.15, denoise*0.8 + t*0.2));
+      const m=new THREE.Mesh(beadGeom, new THREE.MeshPhongMaterial({color:c}));
+      m.position.copy(p); beads.add(m);
+    }
+
+    // pins (motif 12–16)
+    if(!pins){
+      pins = new THREE.Group(); group.add(pins);
+      const pinGeom = new THREE.SphereGeometry(0.12, 24, 18);
+      const pinMat = new THREE.MeshPhongMaterial({color:0xff9ecd, emissive:0x7f3a60, emissiveIntensity:0.85});
+      const idxs=[12,14,16]; // three pins around the motif
+      idxs.forEach(ii=>{
+        const t=ii/(N-1);
+        const pin=new THREE.Mesh(pinGeom, pinMat);
+        pin.position.copy(curve.getPoint(t));
+        pins.add(pin);
+      });
+    } else {
+      // update positions with new curve
+      const idxs=[12,14,16];
+      pins.children.forEach((pin,ix)=>{
+        const t=idxs[ix]/(N-1);
+        pin.position.copy(curve.getPoint(t));
+      });
+    }
+  }
+
+  // initial build
+  buildGeometry(0.15);
+
+  // resize
+  const resize = ()=>{
+    const parent = renderer.domElement.parentElement;
+    const {width, height} = parent.getBoundingClientRect();
+    renderer.setSize(width, height, false);
+    camera.aspect = width/height; camera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize', resize, {passive:true}); resize(); setTimeout(resize, 50);
+
+  // animate
+  let spin=true, rot=0, denoise=0.15, play=false, t0=0;
+  function animate(now){
+    requestAnimationFrame(animate);
+    if(spin){ rot+=0.005; group.rotation.y=rot; }
+    if(play){
+      if(!t0) t0=now;
+      const u=Math.min(1, (now-t0)/3200); // 3.2s denoising
+      const v = 0.15 + u*(0.95-0.15);
+      if(Math.abs(v-denoise)>0.01){ denoise=v; buildGeometry(denoise); }
+      if(u>=1){ play=false; t0=0; }
+    }
+    controls.update(); renderer.render(scene, camera);
+  }
+  animate();
+
+  // controls
+  document.getElementById(spinBtnId).onclick = ()=>{ spin=!spin; };
+  document.getElementById(pinsBtnId).onclick = ()=>{ pins.visible=!pins.visible; };
+  document.getElementById(snapBtnId).onclick = ()=>{
+    const prev = scene.background; scene.background = new THREE.Color(0x0a0716);
+    renderer.render(scene, camera);
+    const a = document.createElement('a');
+    a.href = renderer.domElement.toDataURL('image/png'); a.download='evodiff_3d.png'; a.click();
+    scene.background = prev;
+  };
+  document.getElementById(seedBtnId).onclick = ()=>{
+    noiseSeed = Math.random()*1000;
+    for(let k=0;k<N;k++){
+      const t=k/(N-1);
+      const nearMotif = (t>=0.20 && t<=0.27) ? 0.25 : 1.0;
+      const a = 0.8*nearMotif;
+      function r(n){ return (Math.sin(n+noiseSeed*1.73)*.5+.5)*2-1; }
+      jitter[k].set(r(k*.9)*a, r(k*1.3)*a, r(k*1.7)*a);
+    }
+    denoise=0.15; buildGeometry(denoise);
+  };
+  document.getElementById(playDiffBtnId).onclick = ()=>{ denoise=0.15; buildGeometry(denoise); play=true; t0=0; };
+
+  // API for outer page
+  return {
+    reset: ()=>{ controls.reset(); group.rotation.set(0,0,0); rot=0; denoise=0.15; buildGeometry(denoise); },
+    tourPins: async ()=>{
+      spin=false;
+      const idxs=[12,14,16];
+      for(const ii of idxs){
+        const t = ii/(N-1);
+        const target = baseCurve.getPoint(t);
+        await flyTo(target, 950);
+        await new Promise(r=>setTimeout(r, 420));
+      }
+      spin=true;
+    }
+  };
+
+  // camera fly helper
+  function flyTo(targetVec, ms=1000){
+    const startT = controls.target.clone();
+    const startP = camera.position.clone();
+    const dir = startP.clone().sub(startT);
+    const endP = targetVec.clone().add(dir);
+    const t0 = performance.now(); const ease=u=>u*(2-u);
+    return new Promise(resolve=>{
+      (function step(now){
+        const u=Math.min(1,(now - t0)/ms), e=ease(u);
+        controls.target.lerpVectors(startT, targetVec, e);
+        camera.position.lerpVectors(startP, endP, e);
+        if(u<1) requestAnimationFrame(step); else resolve();
+      })(performance.now());
+    });
+  }
+}
+
+// init viewer on step 5
+let viewer=null;
+window.initViewer = function(){
+  if(viewer) return viewer;
+  viewer = window.createEvoDiffViewer({
+    canvasId:'evodiff3d',
+    spinBtnId:'spin',
+    pinsBtnId:'pins',
+    snapBtnId:'snap',
+    seedBtnId:'seed',
+    playDiffBtnId:'playDiff'
+  });
+  return viewer;
+}
+</script>
+
+<!-- Step logic (non-module) -->
+<script>
+const steps=["st1","st2","st3","st4","st5"];
+let idx=0, playing=false, timers=[], explain=true, v=null;
+const dots=[...document.querySelectorAll('[data-dot]')];
+const CAPT = {
+  st1:"We set a design goal and a pinned motif (EAAAK at 12–16).",
+  st2:"A diffusion schedule runs from t=1 (noise) to t=0 (clean sequence).",
+  st3:"During denoising, tokens sharpen and the motif persists.",
+  st4:"We keep 3 candidates to validate.",
+  st5:"Stylized 3D backbone: replay denoising and inspect motif pins."
+};
+
+function setExplain(on){
+  explain=on;
+  document.getElementById('explain').textContent = on ? "💬 Explain Mode: ON" : "💬 Explain Mode: OFF";
+  document.querySelectorAll('.coach').forEach(el=>el.classList.toggle('hidden', !on));
+}
+
+function showStep(i){
+  timers.forEach(t=>clearTimeout(t)); timers=[];
+  document.querySelectorAll('.step').forEach(el=>el.classList.remove('active'));
+  document.getElementById(steps[i]).classList.add('active');
+  dots.forEach((d,k)=>d.classList.toggle('active', k===i));
+  const cap=document.getElementById('cap');
+  if(cap) cap.textContent = CAPT[steps[i]]||"";
+  setExplain(explain);
+
+  if(steps[i]==='st2') initSt2();
+  if(steps[i]==='st3') initSt3();
+  if(steps[i]==='st4') initSt4();
+  if(steps[i]==='st5') initSt5();
+}
+
+function next(){ idx=Math.min(idx+1, steps.length-1); showStep(idx); }
+function prev(){ idx=Math.max(idx-1, 0); showStep(idx); }
+function reset(){ playing=false; idx=0; showStep(idx); if(v && v.reset) v.reset(); }
+
+document.getElementById('play').onclick=()=>{ playing=true; showStep(idx); };
+document.getElementById('pause').onclick=()=>{ playing=false; timers.forEach(clearTimeout); timers=[]; };
+document.getElementById('next').onclick=()=>{ playing=false; next(); };
+document.getElementById('prev').onclick=()=>{ playing=false; prev(); };
+document.getElementById('reset').onclick=reset;
+document.getElementById('explain').onclick=()=> setExplain(!explain);
+document.getElementById('tour').onclick=async ()=>{
+  if(idx!==4){ idx=4; showStep(idx); }
+  v = window.initViewer();
+  if(v && v.tourPins) v.tourPins();
+};
+
+/* ---- step specifics ---- */
+function initSt2(){
+  const tl=document.getElementById('tl').children;
+  for(let i=0;i<tl.length;i++) tl[i].classList.toggle('on', i<6);
+  const s=document.getElementById('tSlider'), l=document.getElementById('tLabel');
+  s.value=50; l.textContent="t = 0.50";
+  s.oninput=(e)=>{
+    const val=+e.target.value/100;
+    l.textContent=`t = ${val.toFixed(2)}`;
+    const k=Math.round((1-val)*tl.length);
+    for(let i=0;i<tl.length;i++) tl[i].classList.toggle('on', i<k);
+  };
+  if(playing){ timers.push(setTimeout(next, 2200)); }
+}
+
+function initSt3(){
+  const lines=[...document.querySelectorAll('#seqList .li')];
+  lines.forEach(l=>l.classList.remove('show'));
+  [200,700,1100,1600].forEach((t,i)=> timers.push(setTimeout(()=>lines[i].classList.add('show'), t)));
+  if(playing){ timers.push(setTimeout(next, 2200)); }
+}
+
+function initSt4(){
+  const lines=[...document.querySelectorAll('#cand .li')];
+  lines.forEach(l=>l.classList.remove('show'));
+  [200,620,1040].forEach((t,i)=> timers.push(setTimeout(()=>lines[i].classList.add('show'), t)));
+  if(playing){ timers.push(setTimeout(next, 2000)); }
+}
+
+function initSt5(){
+  v = window.initViewer();
+  if(playing){ timers.push(setTimeout(()=>{ if(v) v.reset(); }, 300)); }
+}
+
+showStep(idx);
+</script>
+</body>
+</html>
